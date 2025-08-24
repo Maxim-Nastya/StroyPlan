@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -920,6 +921,14 @@ const App = () => {
     );
 };
 
-const container = document.getElementById('root');
-const root = createRoot(container!);
-root.render(<App />);
+// Wait for the DOM to be fully loaded before initializing the React app.
+// This prevents a race condition where the script executes before the 'root' element exists.
+document.addEventListener('DOMContentLoaded', () => {
+    const container = document.getElementById('root');
+    if (container) {
+        const root = createRoot(container);
+        root.render(<App />);
+    } else {
+        console.error('Fatal Error: Root container #root not found in the document.');
+    }
+});
