@@ -778,6 +778,41 @@ tbody tr:hover {
     font-weight: 700;
 }
 
+/* 6.11 Shopping List Modal */
+.shopping-list-container {
+    margin-bottom: var(--space-6);
+    max-height: 40vh;
+    overflow-y: auto;
+    padding-right: var(--space-2); /* For scrollbar */
+}
+.shopping-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.shopping-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid hsl(var(--border));
+}
+.shopping-list-item:last-child {
+    border-bottom: none;
+}
+.shopping-list-name {
+    font-weight: 500;
+}
+.shopping-list-quantity {
+    font-size: var(--text-base);
+    color: hsl(var(--text-secondary));
+    white-space: nowrap;
+    padding-left: var(--space-4);
+}
+
 /* 7. Accessibility */
 @media (prefers-reduced-motion: reduce) {
     * {

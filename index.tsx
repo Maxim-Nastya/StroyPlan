@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, createContext, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, createContext, useContext, useCallback, Dispatch, SetStateAction } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // --- ICONS ---
@@ -82,7 +82,7 @@ interface Project {
 }
 
 // --- HOOK FOR LOCALSTORAGE ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
+const useLocalStorage = <T>(key: string, initialValue: T): [T, Dispatch<SetStateAction<T>>] => {
     const [storedValue, setStoredValue] = useState<T>(() => {
         if (typeof window === 'undefined') {
             return initialValue;
@@ -96,7 +96,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
         }
     });
 
-    const setValue: React.Dispatch<React.SetStateAction<T>> = (value) => {
+    const setValue: Dispatch<SetStateAction<T>> = (value) => {
         try {
             const valueToStore = value instanceof Function ? value(storedValue) : value;
             setStoredValue(valueToStore);
@@ -113,9 +113,15 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
 
 // --- SIMULATED API ---
 const api = {
-    _get: <T>(key: string, defaultValue: T): T => JSON.parse(localStorage.getItem(key) || JSON.stringify(defaultValue)),
-    _set: <T>(key: string, value: T) => localStorage.setItem(key, JSON.stringify(value)),
-    _delay: (ms = 500) => new Promise(res => setTimeout(res, ms)),
+    _get: function<T>(key: string, defaultValue: T): T {
+        return JSON.parse(localStorage.getItem(key) || JSON.stringify(defaultValue));
+    },
+    _set: function<T>(key: string, value: T) {
+        localStorage.setItem(key, JSON.stringify(value));
+    },
+    _delay: function(ms = 500) {
+        return new Promise(res => setTimeout(res, ms));
+    },
 
     async login(email: string, password: string): Promise<User> {
         await this._delay();
@@ -298,6 +304,7 @@ interface EstimateEditorProps {
 }
 const EstimateEditor = ({ project, projects, setProjects, directory, setDirectory, userKey }: EstimateEditorProps) => {
     const [showModal, setShowModal] = useState(false);
+    const [showShoppingListModal, setShowShoppingListModal] = useState(false);
     const [editingItem, setEditingItem] = useState<EstimateItem | null>(null);
     const [newItem, setNewItem] = useState<Omit<EstimateItem, 'id'>>({ name: '', type: 'Работа', unit: 'шт', quantity: 1, price: 0 });
     const [suggestions, setSuggestions] = useState<DirectoryItem[]>([]);
@@ -322,6 +329,26 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
         return discountValue;
     }, [subtotal, discountType, discountValue]);
     const total = subtotal - discountAmount;
+
+    const shoppingList = useMemo(() => {
+        return project.estimate
+            .filter(item => item.type === 'Материал')
+            .map(item => ({ name: item.name, quantity: item.quantity, unit: item.unit }));
+    }, [project.estimate]);
+
+    const handleCopyShoppingList = () => {
+        if (shoppingList.length === 0) return;
+        const listText = shoppingList
+            .map(item => `${item.name} - ${item.quantity} ${item.unit}`)
+            .join('\n');
+        navigator.clipboard.writeText(listText).then(() => {
+            addToast('Список покупок скопирован!', 'success');
+            setShowShoppingListModal(false);
+        }, (err) => {
+            console.error('Could not copy text: ', err);
+            addToast('Не удалось скопировать', 'error');
+        });
+    };
 
     const openModalForNew = () => {
         setEditingItem(null);
@@ -434,7 +461,8 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
             <div className="d-flex justify-between align-center mb-1">
                 <h3>Смета</h3>
                 <div>
-                     <button className="btn btn-secondary btn-sm" onClick={handleShare}>Поделиться</button>
+                     <button className="btn btn-secondary btn-sm" onClick={() => setShowShoppingListModal(true)}>Список покупок</button>
+                     <button className="btn btn-secondary btn-sm" onClick={handleShare} style={{marginLeft: '0.5rem'}}>Поделиться</button>
                      <button className="btn btn-primary btn-sm" style={{marginLeft: '0.5rem'}} onClick={openModalForNew}>+ Добавить</button>
                 </div>
             </div>
@@ -559,6 +587,33 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
                         </button>
                     </div>
                 </form>
+            </Modal>
+             <Modal show={showShoppingListModal} onClose={() => setShowShoppingListModal(false)} title="Список покупок">
+                <div className="shopping-list-container">
+                    {shoppingList.length > 0 ? (
+                        <ul className="shopping-list">
+                            {shoppingList.map((item, index) => (
+                                <li key={index} className="shopping-list-item">
+                                    <span className="shopping-list-name">{item.name}</span>
+                                    <span className="shopping-list-quantity">{item.quantity} {item.unit}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p>В смете нет материалов для составления списка.</p>
+                    )}
+                </div>
+                <div className="form-actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowShoppingListModal(false)}>Закрыть</button>
+                    <button 
+                        type="button" 
+                        className="btn btn-primary" 
+                        onClick={handleCopyShoppingList}
+                        disabled={shoppingList.length === 0}
+                    >
+                        Скопировать список
+                    </button>
+                </div>
             </Modal>
         </div>
     );
