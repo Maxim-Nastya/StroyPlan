@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, createContext, useContext, useCallback, Dispatch, SetStateAction } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -26,6 +27,7 @@ const LockIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="non
 const ReportsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 9.2H8V19H5V9.2ZM10.6 5H13.4V19H10.6V5ZM16.2 13H19V19H16.2V13Z" fill="currentColor"/></svg>;
 const DirectoryIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V4C20 2.9 19.1 2 18 2ZM6 4H11V12L8.5 10.5L6 12V4Z" fill="currentColor"/></svg>;
 const ProjectsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3L2 12h3v8h14v-8h3L12 3zm0 15c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" fill="currentColor"/><path d="M0 0h24v24H0z" fill="none"/></svg>;
+const SearchIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.5 14H14.71L14.43 13.73C15.41 12.59 16 11.11 16 9.5C16 5.91 13.09 3 9.5 3C5.91 3 3 5.91 3 9.5C3 13.09 5.91 16 9.5 16C11.11 16 12.59 15.41 13.73 14.43L14 14.71V15.5L19 20.49L20.49 19L15.5 14ZM9.5 14C7.01 14 5 11.99 5 9.5C5 7.01 7.01 5 9.5 5C11.99 5 14 7.01 14 9.5C14 11.99 11.99 14 9.5 14Z" fill="currentColor"/></svg>;
 
 
 // --- DATA TYPES ---
@@ -140,7 +142,15 @@ const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reje
 });
 
 // --- SIMULATED API ---
-const api = {
+const api: {
+    _get: <T>(key: string, defaultValue: T) => T;
+    _set: <T>(key: string, value: T) => void;
+    _delay: (ms?: number) => Promise<void>;
+    login: (email: string, password: string) => Promise<User>;
+    register: (email: string, password: string) => Promise<User>;
+    getData: (userKey: string) => Promise<{ projects: Project[]; directory: DirectoryItem[]; profile: UserProfile; }>;
+    saveData: <T>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T) => Promise<void>;
+} = {
     _get<T>(key: string, defaultValue: T): T {
         return JSON.parse(localStorage.getItem(key) || JSON.stringify(defaultValue));
     },
@@ -148,7 +158,7 @@ const api = {
         localStorage.setItem(key, JSON.stringify(value));
     },
     _delay(ms = 500) {
-        return new Promise(res => setTimeout(res, ms));
+        return new Promise<void>(res => setTimeout(res, ms));
     },
 
     async login(email: string, password: string): Promise<User> {
@@ -1112,13 +1122,22 @@ interface ProjectListProps {
 }
 const ProjectList = ({ projects, onSelectProject, onNewProject }: ProjectListProps) => {
     const [statusFilter, setStatusFilter] = useState<'В работе' | 'Завершен'>('В работе');
+    const [searchQuery, setSearchQuery] = useState('');
     
-    const filteredProjects = useMemo(() => 
-        projects
+    const filteredProjects = useMemo(() => {
+        const lowercasedQuery = searchQuery.toLowerCase();
+        return projects
             .filter(p => p.status === statusFilter)
-            .sort((a, b) => a.name.localeCompare(b.name)), 
-        [projects, statusFilter]
-    );
+            .filter(p => {
+                if (!lowercasedQuery) return true;
+                return (
+                    p.name.toLowerCase().includes(lowercasedQuery) ||
+                    p.address.toLowerCase().includes(lowercasedQuery) ||
+                    p.client.name.toLowerCase().includes(lowercasedQuery)
+                );
+            })
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [projects, statusFilter, searchQuery]);
 
     return (
         <div>
@@ -1130,6 +1149,17 @@ const ProjectList = ({ projects, onSelectProject, onNewProject }: ProjectListPro
                 </div>
             </div>
 
+            <div className="search-container">
+                <SearchIcon />
+                <input
+                    type="text"
+                    placeholder="Поиск по названию, адресу, клиенту..."
+                    className="search-input"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+            </div>
+
             {filteredProjects.length === 0 ? (
                 <div className="empty-state">
                     {projects.length === 0 ? (
@@ -1137,6 +1167,8 @@ const ProjectList = ({ projects, onSelectProject, onNewProject }: ProjectListPro
                             <p>У вас пока нет проектов. <br/>Начните с создания первого!</p>
                             <button className="btn btn-primary" onClick={onNewProject}>Создать первый проект</button>
                         </>
+                    ) : searchQuery ? (
+                        <p>Проекты по запросу "{searchQuery}" не найдены.</p>
                     ) : (
                          <p>Нет проектов со статусом "{statusFilter}".</p>
                     )}

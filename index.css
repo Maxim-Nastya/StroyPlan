@@ -812,6 +812,40 @@ tbody tr:hover {
     padding-left: var(--space-4);
 }
 
+/* 6.12 Search Bar */
+.search-container {
+    position: relative;
+    margin-bottom: var(--space-6);
+}
+.search-container svg {
+    position: absolute;
+    left: var(--space-4);
+    top: 50%;
+    transform: translateY(-50%);
+    color: hsl(var(--text-secondary));
+    pointer-events: none;
+}
+.search-input {
+    width: 100%;
+    padding: var(--space-3) var(--space-4) var(--space-3) calc(var(--space-4) * 2 + 20px);
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--border-radius-full);
+    font-size: var(--text-base);
+    font-family: var(--font-family);
+    transition: var(--transition-smooth);
+    background-color: hsl(var(--surface-muted));
+}
+.search-input::placeholder {
+    color: hsl(var(--text-secondary));
+}
+.search-input:focus {
+    outline: none;
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.2);
+    background-color: var(--surface);
+}
+
+
 /* 7. Accessibility & Mobile */
 @media (prefers-reduced-motion: reduce) {
     * {
