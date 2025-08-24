@@ -31,6 +31,11 @@ const SearchIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="n
 const ShareIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 16.08C17.24 16.08 16.56 16.38 16.04 16.85L8.91 12.7C8.96 12.47 9 12.24 9 12C9 11.76 8.96 11.53 8.91 11.3L16.04 7.15C16.56 7.62 17.24 7.92 18 7.92C19.66 7.92 21 6.58 21 4.92C21 3.26 19.66 1.92 18 1.92C16.34 1.92 15 3.26 15 4.92C15 5.16 15.04 5.39 15.09 5.62L7.96 9.77C7.44 9.3 6.76 9 6 9C4.34 9 3 10.34 3 12C3 13.66 4.34 15 6 15C6.76 15 7.44 14.7 7.96 14.23L15.09 18.38C15.04 18.61 15 18.84 15 19.08C15 20.74 16.34 22.08 18 22.08C19.66 22.08 21 20.74 21 19.08C21 17.42 19.66 16.08 18 16.08Z" fill="currentColor"/></svg>;
 const ShoppingListIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11 9H13V6H11V9ZM11 13H13V11H11V13ZM11 17H13V15H11V17ZM7 20C7 20.55 7.45 21 8 21H16C16.55 21 17 20.55 17 20V7H8C7.45 7 7 7.45 7 8V20ZM16 4H12L11 3H7L6 4H2V6H18V4H16Z" fill="currentColor"/></svg>;
 const DocumentIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2ZM16 18H8V16H16V18ZM16 14H8V12H16V14ZM13 9V3.5L18.5 9H13Z" fill="currentColor"/></svg>;
+const CommentIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z" fill="currentColor"/></svg>;
+const CalendarIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z" fill="currentColor"/></svg>;
+const AttachFileIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z" fill="currentColor"/></svg>;
+const ToolIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 13h-4v4h-2v-4h-4v-2h4V7h2v4h4v2M7 2v2H2v5h5V7h5v10H9v-5H4v5h5v5H2v-5H0v7h9v-5h4v5h9v-7h-5v-5h5V7h-5V2H7z" fill="currentColor"/></svg>;
+const SaveTemplateIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z" fill="currentColor"/></svg>;
 
 
 // --- DATA TYPES ---
@@ -51,6 +56,13 @@ interface UserProfile {
     logo: string; // base64 data URL
 }
 
+interface Comment {
+    id: string;
+    author: 'Клиент' | 'Исполнитель';
+    text: string;
+    timestamp: string;
+}
+
 interface EstimateItem {
     id: string;
     name: string;
@@ -58,6 +70,7 @@ interface EstimateItem {
     unit: string;
     quantity: number;
     price: number;
+    comments?: Comment[];
 }
 
 interface Estimate {
@@ -66,6 +79,12 @@ interface Estimate {
     items: EstimateItem[];
     discount?: Discount;
     approvedOn?: string;
+}
+
+interface EstimateTemplate {
+    id: string;
+    name: string;
+    items: Omit<EstimateItem, 'id' | 'quantity' | 'comments'>[];
 }
 
 interface DirectoryItem {
@@ -102,6 +121,26 @@ interface PhotoReport {
     image: string; // base64 data URL
 }
 
+interface ProjectScheduleItem {
+    id: string;
+    name: string;
+    startDate: string;
+    endDate: string;
+}
+
+interface ProjectDocument {
+    id: string;
+    name: string;
+    file: string; // base64 data URL
+    fileName: string;
+}
+
+interface InventoryItem {
+    id: string;
+    name: string;
+    location: string; // 'На базе' or projectId
+}
+
 interface Project {
     id: string;
     name: string;
@@ -113,6 +152,9 @@ interface Project {
     payments: Payment[];
     contractor?: UserProfile;
     photoReports?: PhotoReport[];
+    notes?: string;
+    schedule?: ProjectScheduleItem[];
+    documents?: ProjectDocument[];
 }
 
 // --- HOOK FOR LOCALSTORAGE ---
@@ -176,8 +218,8 @@ const _delay = (ms = 500) => {
 const api: {
     login: (email: string, password: string) => Promise<User>;
     register: (email: string, password: string) => Promise<User>;
-    getData: (userKey: string) => Promise<{ projects: Project[]; directory: DirectoryItem[]; profile: UserProfile; }>;
-    saveData: <T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T) => Promise<void>;
+    getData: (userKey: string) => Promise<{ projects: Project[]; directory: DirectoryItem[]; profile: UserProfile; templates: EstimateTemplate[]; inventory: InventoryItem[]; }>;
+    saveData: <T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory', data: T) => Promise<void>;
 } = {
     async login(email: string, password: string): Promise<User> {
         await _delay();
@@ -200,11 +242,13 @@ const api: {
         return { email: newUser.email };
     },
 
-    async getData(userKey: string): Promise<{ projects: Project[], directory: DirectoryItem[], profile: UserProfile }> {
+    async getData(userKey: string): Promise<{ projects: Project[], directory: DirectoryItem[], profile: UserProfile, templates: EstimateTemplate[], inventory: InventoryItem[] }> {
         await _delay(800);
         let projects = _get<Project[]>(`prorab_projects_${userKey}`, []);
         let directory = _get<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
         const profile = _get<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
+        const templates = _get<EstimateTemplate[]>(`prorab_templates_${userKey}`, []);
+        const inventory = _get<InventoryItem[]>(`prorab_inventory_${userKey}`, []);
         
         // --- Data Migration for Directory Items without IDs ---
         let directoryNeedsUpdate = false;
@@ -258,10 +302,32 @@ const api: {
             .flatMap(k => JSON.parse(localStorage.getItem(k) || '[]'));
         _set('prorab_projects_all', allProjects);
         
-        return { projects, directory, profile };
+        // Sync comments from public store on load
+        projects = projects.map(p => {
+            const publicProject = allProjects.find((pubP:Project) => pubP.id === p.id);
+            if (!publicProject) return p;
+
+            const syncedEstimates = p.estimates.map(est => {
+                const publicEstimate = publicProject.estimates.find((pubE:Estimate) => pubE.id === est.id);
+                if (!publicEstimate) return est;
+                
+                const syncedItems = est.items.map(item => {
+                    const publicItem = publicEstimate.items.find((pubI:EstimateItem) => pubI.id === item.id);
+                    const clientComments = (publicItem?.comments || []).filter(c => c.author === 'Клиент');
+                    const contractorComments = item.comments?.filter(c => c.author === 'Исполнитель') || [];
+                    const combined = [...clientComments, ...contractorComments].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    const uniqueComments = Array.from(new Map(combined.map(c => [c.id, c])).values());
+                    return { ...item, comments: uniqueComments.length > 0 ? uniqueComments : undefined };
+                });
+                return { ...est, items: syncedItems };
+            });
+            return { ...p, estimates: syncedEstimates };
+        });
+
+        return { projects, directory, profile, templates, inventory };
     },
 
-    async saveData<T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T): Promise<void> {
+    async saveData<T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory', data: T): Promise<void> {
         await _delay();
         _set(`prorab_${dataType}_${userKey}`, data);
     }
@@ -400,8 +466,9 @@ interface EstimateEditorProps {
     directory: DirectoryItem[];
     setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
     userKey: string;
+    onSaveTemplate: (template: EstimateTemplate) => Promise<void>;
 }
-const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, setDirectory, userKey }: EstimateEditorProps) => {
+const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, setDirectory, userKey, onSaveTemplate }: EstimateEditorProps) => {
     const [showModal, setShowModal] = useState(false);
     const [showShoppingListModal, setShowShoppingListModal] = useState(false);
     const [editingItem, setEditingItem] = useState<EstimateItem | null>(null);
@@ -563,6 +630,25 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
         });
         setSuggestions([]);
     };
+
+    const handleSaveAsTemplate = () => {
+        if (!estimateName.trim()) {
+            addToast('Сначала введите название сметы', 'error');
+            return;
+        }
+        if (estimate.items.length === 0) {
+            addToast('Нельзя сохранить пустую смету как шаблон', 'error');
+            return;
+        }
+
+        const template: EstimateTemplate = {
+            id: generateId(),
+            name: estimateName.trim(),
+            items: estimate.items.map(({ name, type, unit, price }) => ({ name, type, unit, price }))
+        };
+
+        onSaveTemplate(template);
+    };
     
     return (
         <div className="card">
@@ -577,6 +663,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                 />
                 <div className="card-header-actions">
                     <button className="btn btn-primary btn-sm" onClick={openModalForNew}>+ Добавить</button>
+                    <button className="action-btn" onClick={handleSaveAsTemplate} aria-label="Сохранить как шаблон"><SaveTemplateIcon /></button>
                     <button className="action-btn" onClick={() => setShowShoppingListModal(true)} aria-label="Список покупок"><ShoppingListIcon /></button>
                     <button className="action-btn" onClick={handleShare} aria-label="Поделиться"><ShareIcon /></button>
                     <button className="action-btn" onClick={() => onDelete(estimate.id)} aria-label="Удалить смету"><DeleteIcon /></button>
@@ -615,6 +702,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                                     <td className="align-right">{formatCurrency(item.quantity * item.price)}</td>
                                     <td className="align-right">
                                         <div className="item-actions">
+                                            {/* TODO: Add Commenting feature */}
                                             <button className="action-btn" onClick={() => openModalForEdit(item)} aria-label="Редактировать"><EditIcon /></button>
                                             <button className="action-btn" onClick={() => handleDeleteItem(item.id)} aria-label="Удалить"><DeleteIcon /></button>
                                         </div>
@@ -1210,9 +1298,11 @@ interface ProjectDetailsProps {
     onBack: () => void;
     directory: DirectoryItem[];
     setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
+    templates: EstimateTemplate[];
+    setTemplates: React.Dispatch<React.SetStateAction<EstimateTemplate[]>>;
     userKey: string;
 }
-const ProjectDetails = ({ project, projects, setProjects, onBack, directory, setDirectory, userKey }: ProjectDetailsProps) => {
+const ProjectDetails = ({ project, projects, setProjects, onBack, directory, setDirectory, templates, setTemplates, userKey }: ProjectDetailsProps) => {
     const [isEditing, setIsEditing] = useState(false);
     const [showActModal, setShowActModal] = useState(false);
     const { addToast } = useToasts();
@@ -1284,6 +1374,13 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
         }
     };
 
+     const handleSaveTemplate = async (template: EstimateTemplate) => {
+        const updatedTemplates = [...templates, template];
+        setTemplates(updatedTemplates);
+        await api.saveData(userKey, 'templates', updatedTemplates);
+        addToast('Шаблон сохранен!', 'success');
+    };
+
     return (
         <div className="animate-fade-slide-up">
             <button onClick={onBack} className="back-button">
@@ -1311,6 +1408,8 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
             </div>
             <FinancialDashboard project={project} />
             
+            {/* TODO: Add sections for Notes, Schedule, Documents */}
+
             <div className="estimates-container">
                 {project.estimates.map(estimate => (
                     <EstimateEditor
@@ -1321,6 +1420,7 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
                         onDelete={handleDeleteEstimate}
                         directory={directory}
                         setDirectory={setDirectory}
+                        onSaveTemplate={handleSaveTemplate}
                         userKey={userKey}
                     />
                 ))}
@@ -1345,10 +1445,12 @@ interface ProjectCreationModalProps {
     projects: Project[];
     setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
     userProfile: UserProfile;
+    templates: EstimateTemplate[];
     userKey: string;
 }
-const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfile, userKey }: ProjectCreationModalProps) => {
+const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfile, templates, userKey }: ProjectCreationModalProps) => {
     const [newProject, setNewProject] = useState({ name: '', address: '', clientName: '', clientPhone: '' });
+    const [selectedTemplateId, setSelectedTemplateId] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const { addToast } = useToasts();
 
@@ -1356,6 +1458,11 @@ const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfil
         e.preventDefault();
         setIsSaving(true);
         try {
+            const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+            const initialEstimateItems = selectedTemplate 
+                ? selectedTemplate.items.map(item => ({...item, id: generateId(), quantity: 1 })) 
+                : [];
+            
             const project: Project = {
                 id: generateId(),
                 name: newProject.name,
@@ -1364,13 +1471,16 @@ const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfil
                 client: { name: newProject.clientName, phone: newProject.clientPhone },
                 estimates: [{
                     id: generateId(),
-                    name: 'Основная смета',
-                    items: [],
+                    name: selectedTemplate ? selectedTemplate.name : 'Основная смета',
+                    items: initialEstimateItems,
                     discount: { type: 'percent', value: 0 }
                 }],
                 expenses: [],
                 payments: [],
                 photoReports: [],
+                notes: '',
+                schedule: [],
+                documents: [],
                 contractor: userProfile
             };
             const updatedProjects = [project, ...projects];
@@ -1378,6 +1488,7 @@ const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfil
             await api.saveData(userKey, 'projects', updatedProjects);
             addToast('Проект создан!', 'success');
             setNewProject({ name: '', address: '', clientName: '', clientPhone: '' });
+            setSelectedTemplateId('');
             onClose();
         } catch (error) {
             addToast('Не удалось создать проект', 'error');
@@ -1385,10 +1496,28 @@ const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfil
             setIsSaving(false);
         }
     };
+    
+    const handleClose = () => {
+        if(isSaving) return;
+        setNewProject({ name: '', address: '', clientName: '', clientPhone: '' });
+        setSelectedTemplateId('');
+        onClose();
+    }
 
     return (
-        <Modal show={show} onClose={() => !isSaving && onClose()} title="Новый проект">
+        <Modal show={show} onClose={handleClose} title="Новый проект">
             <form onSubmit={handleCreateProject}>
+                {templates.length > 0 && (
+                     <div className="form-group">
+                        <label>Начать с шаблона (необязательно)</label>
+                        <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(e.target.value)} disabled={isSaving}>
+                            <option value="">-- Новый проект --</option>
+                            {templates.map(template => (
+                                <option key={template.id} value={template.id}>{template.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 <div className="form-group">
                     <label>Название проекта</label>
                     <input type="text" placeholder="Ремонт квартиры на Лесной" value={newProject.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, name: e.target.value })} required disabled={isSaving}/>
@@ -1406,7 +1535,7 @@ const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfil
                     <input type="tel" placeholder="+7 (999) 123-45-67" value={newProject.clientPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, clientPhone: e.target.value })} required disabled={isSaving}/>
                 </div>
                 <div className="form-actions">
-                    <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSaving}>Отмена</button>
+                    <button type="button" className="btn btn-secondary" onClick={handleClose} disabled={isSaving}>Отмена</button>
                     <button type="submit" className="btn btn-primary" disabled={isSaving}>
                         {isSaving ? <Loader/> : 'Создать'}
                     </button>
@@ -2162,9 +2291,11 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
     const [projects, setProjects] = useState<Project[]>([]);
     const [directory, setDirectory] = useState<DirectoryItem[]>([]);
     const [userProfile, setUserProfile] = useState<UserProfile>({ companyName: '', contactName: userKey, phone: '', logo: '' });
+    const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
+    const [inventory, setInventory] = useState<InventoryItem[]>([]);
     
     const [isLoading, setIsLoading] = useState(true);
-    const [currentView, setCurrentView] = useState<'projects' | 'reports' | 'directory'>('projects');
+    const [currentView, setCurrentView] = useState<'projects' | 'reports' | 'directory' | 'inventory'>('projects');
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
     const [showNewProjectModal, setShowNewProjectModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
@@ -2173,10 +2304,12 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
     useEffect(() => {
         const loadInitialData = async () => {
             try {
-                const { projects, directory, profile } = await api.getData(userKey);
+                const { projects, directory, profile, templates, inventory } = await api.getData(userKey);
                 setProjects(projects);
                 setDirectory(directory);
                 setUserProfile(profile);
+                setTemplates(templates);
+                setInventory(inventory);
             } catch (e) {
                 addToast('Не удалось загрузить данные', 'error');
             } finally {
@@ -2195,7 +2328,7 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
         setSelectedProjectId(null);
         setCurrentView('projects');
     };
-    const handleViewChange = (view: 'projects' | 'reports' | 'directory') => {
+    const handleViewChange = (view: 'projects' | 'reports' | 'directory' | 'inventory') => {
         setCurrentView(view);
         setSelectedProjectId(null); // Reset project selection when switching views
     };
@@ -2210,6 +2343,9 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
                 <div className="header-content">
                     <h1 onClick={() => handleViewChange('projects')} style={{cursor: 'pointer'}} aria-label="На главную">Прораб</h1>
                     <div className="header-actions">
+                         <button className="settings-btn" onClick={() => handleViewChange('inventory')} aria-label="Инвентарь">
+                            <ToolIcon />
+                        </button>
                         <button className="settings-btn" onClick={() => handleViewChange('directory')} aria-label="Справочник">
                             <DirectoryIcon />
                         </button>
@@ -2235,6 +2371,8 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
                             onBack={handleBackToProjects}
                             directory={directory}
                             setDirectory={setDirectory}
+                            templates={templates}
+                            setTemplates={setTemplates}
                             userKey={userKey}
                         />
                     ) : (
@@ -2246,13 +2384,16 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
                     )
                  ) : currentView === 'reports' ? (
                     <ReportsView projects={projects} onBack={() => handleViewChange('projects')} />
-                 ) : (
+                 ) : currentView === 'directory' ? (
                     <DirectoryView
                         directory={directory}
                         setDirectory={setDirectory}
                         userKey={userKey}
                         onBack={() => handleViewChange('projects')}
                     />
+                 ) : (
+                    // TODO: InventoryView
+                    <div>Inventory View</div>
                  )}
             </main>
 
@@ -2264,6 +2405,14 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
                 >
                     <ProjectsIcon />
                     <span>Проекты</span>
+                </button>
+                 <button
+                    className={`bottom-nav-btn ${currentView === 'inventory' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('inventory')}
+                    aria-label="Инвентарь"
+                >
+                    <ToolIcon />
+                    <span>Инвентарь</span>
                 </button>
                 <button
                     className={`bottom-nav-btn ${currentView === 'directory' ? 'active' : ''}`}
@@ -2289,6 +2438,7 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
                 projects={projects}
                 setProjects={setProjects}
                 userProfile={userProfile}
+                templates={templates}
                 userKey={userKey}
             />
             <ProfileModal

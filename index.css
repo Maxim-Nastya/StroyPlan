@@ -1022,6 +1022,87 @@ tbody tr:hover {
     resize: vertical;
 }
 
+/* 6.16 NEW: Project Details Sections */
+.notes-textarea {
+    width: 100%;
+    min-height: 150px;
+    resize: vertical;
+}
+
+.schedule-list, .document-list, .inventory-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.schedule-item, .document-item, .inventory-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3);
+    background-color: hsl(var(--surface-muted));
+    border-radius: var(--border-radius-sm);
+}
+.schedule-item-info, .document-item-info, .inventory-item-info {
+    display: flex;
+    flex-direction: column;
+}
+.schedule-item-dates, .document-item-filename, .inventory-item-location {
+    font-size: var(--text-sm);
+    color: hsl(var(--text-secondary));
+}
+.document-item-info a {
+    color: hsl(var(--primary-dark));
+    text-decoration: none;
+    font-weight: 500;
+}
+.document-item-info a:hover {
+    text-decoration: underline;
+}
+
+/* 6.17 NEW: Comments */
+.comment-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+.comment-thread {
+    max-height: 40vh;
+    overflow-y: auto;
+    padding: var(--space-2) var(--space-4);
+    background-color: hsl(var(--surface-muted));
+    border-radius: var(--border-radius-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.comment-bubble {
+    padding: var(--space-3) var(--space-4);
+    border-radius: 18px;
+    max-width: 80%;
+    line-height: 1.4;
+}
+.comment-bubble p { margin-bottom: var(--space-1); }
+.comment-bubble small { font-size: 11px; opacity: 0.8; }
+.comment-bubble.author-client {
+    background-color: hsl(var(--primary-hue) 15% 90%);
+    border-bottom-left-radius: 4px;
+    align-self: flex-start;
+}
+.comment-bubble.author-contractor {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--text-on-primary));
+    border-bottom-right-radius: 4px;
+    align-self: flex-end;
+}
+.comment-bubble.author-contractor p, .comment-bubble.author-contractor small {
+    color: hsl(var(--text-on-primary));
+}
+.comment-form {
+    display: flex;
+    gap: var(--space-3);
+}
+
 
 /* 7. Accessibility & Mobile */
 @media (prefers-reduced-motion: reduce) {
@@ -1046,7 +1127,8 @@ tbody tr:hover {
     }
 
     header .header-actions .settings-btn[aria-label="Справочник"],
-    header .header-actions .settings-btn[aria-label="Отчеты"] {
+    header .header-actions .settings-btn[aria-label="Отчеты"],
+    header .header-actions .settings-btn[aria-label="Инвентарь"] {
         display: none; /* Hide desktop nav icons on mobile */
     }
 
@@ -1078,12 +1160,13 @@ tbody tr:hover {
         color: hsl(var(--text-secondary));
         flex-grow: 1;
         height: 100%;
-        font-size: 11px;
+        font-size: 10px; /* Adjusted for 4 items */
         gap: 2px;
         cursor: pointer;
         transition: var(--transition-fast);
         border-radius: var(--border-radius-sm);
         padding: var(--space-2) 0;
+        text-align: center;
     }
 
     .bottom-nav-btn.active {
