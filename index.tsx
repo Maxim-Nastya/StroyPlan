@@ -14,6 +14,8 @@ const LogoutIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="n
 const EmailIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4ZM20 8L12 13L4 8V6L12 11L20 6V8Z" fill="currentColor"/></svg>;
 const LockIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 8H17V6C17 3.24 14.76 1 12 1C9.24 1 7 3.24 7 6V8H6C4.9 8 4 8.9 4 10V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V10C20 8.9 19.1 8 18 8ZM12 17C10.9 17 10 16.1 10 15C10 13.9 10.9 13 12 13C13.1 13 14 13.9 14 15C14 16.1 13.1 17 12 17ZM15.1 8H8.9V6C8.9 4.29 10.29 2.9 12 2.9C13.71 2.9 15.1 4.29 15.1 6V8Z" fill="currentColor"/></svg>;
 const ReportsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 9.2H8V19H5V9.2ZM10.6 5H13.4V19H10.6V5ZM16.2 13H19V19H16.2V13Z" fill="currentColor"/></svg>;
+const DirectoryIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V4C20 2.9 19.1 2 18 2ZM6 4H11V12L8.5 10.5L6 12V4Z" fill="currentColor"/></svg>;
+
 
 // --- DATA TYPES ---
 interface User {
@@ -43,6 +45,7 @@ interface EstimateItem {
 }
 
 interface DirectoryItem {
+    id: string;
     name: string;
     type: 'Работа' | 'Материал';
     unit: string;
@@ -111,6 +114,20 @@ const useLocalStorage = <T>(key: string, initialValue: T): [T, Dispatch<SetState
     return [storedValue, setValue];
 }
 
+// --- UTILITY FUNCTIONS ---
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amount);
+};
+
+const generateId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+});
+
 // --- SIMULATED API ---
 const api = {
     _get: function<T>(key: string, defaultValue: T): T {
@@ -147,9 +164,25 @@ const api = {
     async getData(userKey: string): Promise<{ projects: Project[], directory: DirectoryItem[], profile: UserProfile }> {
         await this._delay(800);
         const projects = this._get<Project[]>(`prorab_projects_${userKey}`, []);
-        const directory = this._get<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
+        let directory = this._get<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
         const profile = this._get<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
         
+        // --- Data Migration for Directory Items without IDs ---
+        let directoryNeedsUpdate = false;
+        directory = directory.map(item => {
+            if (!item.id) {
+                directoryNeedsUpdate = true;
+                // @ts-ignore
+                return { ...item, id: generateId() };
+            }
+            return item;
+        });
+
+        if (directoryNeedsUpdate) {
+            this._set(`prorab_directory_${userKey}`, directory);
+        }
+        // --- End Migration ---
+
         // This is a workaround for sharing data to the public view
         const allProjects = Object.keys(localStorage)
             .filter(k => k.startsWith('prorab_projects_'))
@@ -164,20 +197,6 @@ const api = {
         this._set(`prorab_${dataType}_${userKey}`, data);
     }
 };
-
-// --- UTILITY FUNCTIONS ---
-const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amount);
-};
-
-const generateId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-});
 
 // --- UI COMPONENTS ---
 
@@ -387,7 +406,8 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
             
             const isInDirectory = directory.some(dirItem => dirItem.name.toLowerCase() === trimmedName.toLowerCase());
             if (!isInDirectory) {
-                const updatedDirectory = [...directory, { name: trimmedName, type: newItem.type, unit: newItem.unit, price: newItem.price }];
+                const newDirectoryItem: DirectoryItem = { id: generateId(), name: trimmedName, type: newItem.type, unit: newItem.unit, price: newItem.price };
+                const updatedDirectory = [...directory, newDirectoryItem];
                 setDirectory(updatedDirectory);
                 await api.saveData(userKey, 'directory', updatedDirectory);
             }
@@ -549,7 +569,7 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
                         {suggestions.length > 0 && (
                             <div className="autocomplete-suggestions">
                                 {suggestions.map(suggestion => (
-                                    <div key={suggestion.name} className="suggestion-item" onClick={() => handleSuggestionClick(suggestion)}>
+                                    <div key={suggestion.id} className="suggestion-item" onClick={() => handleSuggestionClick(suggestion)}>
                                         <div className="suggestion-name">{suggestion.name}</div>
                                         <div className="suggestion-details">
                                             {formatCurrency(suggestion.price)} ({suggestion.type})
@@ -1443,6 +1463,164 @@ const ReportsView = ({ projects, onBack }: ReportsViewProps) => {
     );
 };
 
+interface DirectoryEditModalProps {
+    show: boolean;
+    onClose: () => void;
+    item: DirectoryItem;
+    onSave: (item: DirectoryItem) => Promise<void>;
+}
+const DirectoryEditModal = ({ show, onClose, item, onSave }: DirectoryEditModalProps) => {
+    const [editedItem, setEditedItem] = useState<DirectoryItem>(item);
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        if (item) {
+            setEditedItem(item);
+        }
+    }, [item, show]);
+
+    const handleFormSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSaving(true);
+        await onSave(editedItem);
+        setIsSaving(false);
+        onClose();
+    };
+
+    if (!item) return null;
+
+    return (
+        <Modal show={show} onClose={onClose} title="Редактировать справочник">
+            <form onSubmit={handleFormSave}>
+                <div className="form-group">
+                    <label>Наименование</label>
+                    <input type="text" value={editedItem.name} onChange={e => setEditedItem({...editedItem, name: e.target.value})} required disabled={isSaving}/>
+                </div>
+                <div className="form-group">
+                    <label>Тип</label>
+                    <select value={editedItem.type} onChange={e => setEditedItem({...editedItem, type: e.target.value as 'Работа' | 'Материал'})} disabled={isSaving}>
+                        <option>Работа</option>
+                        <option>Материал</option>
+                    </select>
+                </div>
+                 <div className="form-group">
+                   <label>Ед. изм.</label>
+                   <input type="text" value={editedItem.unit} onChange={e => setEditedItem({...editedItem, unit: e.target.value})} required disabled={isSaving}/>
+                </div>
+                <div className="form-group">
+                    <label>Цена</label>
+                    <input type="number" step="0.01" value={editedItem.price} onChange={e => setEditedItem({...editedItem, price: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
+                </div>
+                <div className="form-actions">
+                    <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSaving}>Отмена</button>
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        {isSaving ? <Loader/> : 'Сохранить'}
+                    </button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
+
+interface DirectoryViewProps {
+    directory: DirectoryItem[];
+    setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
+    userKey: string;
+    onBack: () => void;
+}
+const DirectoryView = ({ directory, setDirectory, userKey, onBack }: DirectoryViewProps) => {
+    const [editingItem, setEditingItem] = useState<DirectoryItem | null>(null);
+    const { addToast } = useToasts();
+
+    const handleEdit = (item: DirectoryItem) => {
+        setEditingItem(item);
+    };
+
+    const handleDelete = async (itemId: string) => {
+        if (window.confirm('Вы уверены, что хотите удалить эту запись из справочника?')) {
+            try {
+                const updatedDirectory = directory.filter(item => item.id !== itemId);
+                setDirectory(updatedDirectory);
+                await api.saveData(userKey, 'directory', updatedDirectory);
+                addToast('Запись удалена', 'success');
+            } catch (e) {
+                addToast('Не удалось удалить запись', 'error');
+            }
+        }
+    };
+
+    const handleSave = async (updatedItem: DirectoryItem) => {
+        try {
+            const updatedDirectory = directory.map(item => item.id === updatedItem.id ? updatedItem : item);
+            setDirectory(updatedDirectory);
+            await api.saveData(userKey, 'directory', updatedDirectory);
+            addToast('Запись обновлена', 'success');
+        } catch (e) {
+            addToast('Не удалось обновить запись', 'error');
+        }
+    };
+
+    return (
+        <div className="animate-fade-slide-up">
+             <button onClick={onBack} className="back-button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 11H7.83L13.42 5.41L12 4L4 12L12 20L13.41 18.59L7.83 13H20V11Z" fill="currentColor"/></svg>
+                <span>К проектам</span>
+            </button>
+            <div className="card">
+                <div className="d-flex justify-between align-center mb-1">
+                    <h2>Справочник</h2>
+                </div>
+                <div className="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Название</th>
+                                <th>Тип</th>
+                                <th className="align-right">Цена</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {directory.length === 0 ? (
+                                <tr><td colSpan={4} style={{textAlign: 'center', padding: '1rem'}}>Справочник пуст.</td></tr>
+                            ) : (
+                                directory
+                                    .sort((a,b) => a.name.localeCompare(b.name))
+                                    .map(item => (
+                                    <tr key={item.id}>
+                                        <td>
+                                            <strong>{item.name}</strong>
+                                            <br/>
+                                            <small>{item.unit}</small>
+                                        </td>
+                                        <td>{item.type}</td>
+                                        <td className="align-right">{formatCurrency(item.price)}</td>
+                                        <td className="align-right">
+                                            <div className="item-actions">
+                                                <button className="action-btn" onClick={() => handleEdit(item)} aria-label="Редактировать"><EditIcon /></button>
+                                                <button className="action-btn" onClick={() => handleDelete(item.id)} aria-label="Удалить"><DeleteIcon /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {editingItem && (
+                <DirectoryEditModal 
+                    show={!!editingItem}
+                    onClose={() => setEditingItem(null)}
+                    item={editingItem}
+                    onSave={handleSave}
+                />
+            )}
+        </div>
+    );
+};
+
 interface AppContentProps {
     currentUser: User;
     onLogout: () => void;
@@ -1454,7 +1632,7 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
     const [userProfile, setUserProfile] = useState<UserProfile>({ companyName: '', contactName: userKey, phone: '', logo: '' });
     
     const [isLoading, setIsLoading] = useState(true);
-    const [currentView, setCurrentView] = useState<'projects' | 'reports'>('projects');
+    const [currentView, setCurrentView] = useState<'projects' | 'reports' | 'directory'>('projects');
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
     const [showNewProjectModal, setShowNewProjectModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
@@ -1482,7 +1660,7 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
     
     const handleSelectProject = (id: string) => setSelectedProjectId(id);
     const handleBackToProjects = () => setSelectedProjectId(null);
-    const handleViewChange = (view: 'projects' | 'reports') => {
+    const handleViewChange = (view: 'projects' | 'reports' | 'directory') => {
         setCurrentView(view);
         setSelectedProjectId(null); // Reset project selection when switching views
     };
@@ -1497,6 +1675,9 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
                 <div className="header-content">
                     <h1 onClick={() => handleViewChange('projects')} style={{cursor: 'pointer'}} aria-label="На главную">Прораб</h1>
                     <div className="header-actions">
+                        <button className="settings-btn" onClick={() => handleViewChange('directory')} aria-label="Справочник">
+                            <DirectoryIcon />
+                        </button>
                         <button className="settings-btn" onClick={() => handleViewChange('reports')} aria-label="Отчеты">
                             <ReportsIcon />
                         </button>
@@ -1528,8 +1709,15 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
                             onNewProject={() => setShowNewProjectModal(true)}
                         />
                     )
-                 ) : (
+                 ) : currentView === 'reports' ? (
                     <ReportsView projects={projects} onBack={() => handleViewChange('projects')} />
+                 ) : (
+                    <DirectoryView
+                        directory={directory}
+                        setDirectory={setDirectory}
+                        userKey={userKey}
+                        onBack={() => handleViewChange('projects')}
+                    />
                  )}
             </main>
             <ProjectCreationModal 
