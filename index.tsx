@@ -921,9 +921,9 @@ const App = () => {
     );
 };
 
-// Wait for the DOM to be fully loaded before initializing the React app.
-// This prevents a race condition where the script executes before the 'root' element exists.
-document.addEventListener('DOMContentLoaded', () => {
+// This is the robust way to initialize the React app.
+// It handles cases where the script might run before or after the DOM is fully loaded.
+const renderApp = () => {
     const container = document.getElementById('root');
     if (container) {
         const root = createRoot(container);
@@ -931,4 +931,12 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         console.error('Fatal Error: Root container #root not found in the document.');
     }
-});
+};
+
+if (document.readyState === 'loading') {
+    // The document is still loading, so we need to wait for the DOMContentLoaded event.
+    document.addEventListener('DOMContentLoaded', renderApp);
+} else {
+    // The DOM is already ready, we can call the render function immediately.
+    renderApp();
+}
