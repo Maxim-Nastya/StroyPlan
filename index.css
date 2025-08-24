@@ -168,7 +168,7 @@ main {
 
 /* 6.1 Card */
 .card {
-    background-color: var(--surface);
+    background-color: hsl(var(--surface));
     border-radius: var(--border-radius);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
@@ -263,7 +263,7 @@ main {
 }
 
 .btn-secondary {
-    background-color: var(--surface);
+    background-color: hsl(var(--surface));
     color: hsl(var(--text-primary));
     border-color: var(--border-color);
 }
@@ -355,7 +355,7 @@ main {
 }
 
 .modal-content {
-    background-color: var(--surface);
+    background-color: hsl(var(--surface));
     padding: var(--space-6);
     border-radius: var(--border-radius);
     width: 90%;
@@ -397,12 +397,12 @@ input, select, textarea {
     font-size: var(--text-base);
     font-family: var(--font-family);
     transition: var(--transition-fast);
-    background-color: hsl(var(--surface-muted));
+    background-color: hsl(var(--surface));
 }
 input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: hsl(var(--primary));
-    background-color: var(--surface);
+    background-color: hsl(var(--surface));
     box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
 }
 input:disabled, select:disabled, textarea:disabled {
@@ -530,7 +530,7 @@ tbody tr:hover {
     transition: var(--transition-fast);
 }
 .modal-toggle button.active, .filter-toggle button.active {
-    background-color: var(--surface);
+    background-color: hsl(var(--surface));
     color: hsl(var(--primary-dark));
     box-shadow: var(--shadow-sm);
 }
@@ -578,7 +578,7 @@ tbody tr:hover {
     top: 100%;
     left: 0;
     right: 0;
-    background-color: var(--surface);
+    background-color: hsl(var(--surface));
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
     box-shadow: var(--shadow-md);
@@ -609,7 +609,7 @@ tbody tr:hover {
 .auth-card {
     width: 100%;
     max-width: 400px;
-    background-color: var(--surface);
+    background-color: hsl(var(--surface));
     border-radius: var(--border-radius);
     box-shadow: var(--shadow-md);
     border: 1px solid var(--border-color);
