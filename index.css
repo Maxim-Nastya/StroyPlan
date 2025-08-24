@@ -286,6 +286,11 @@ main {
     font-size: var(--text-sm);
 }
 
+.btn-large {
+    padding: var(--space-4) var(--space-8);
+    font-size: var(--text-lg);
+}
+
 .fab {
     position: fixed;
     bottom: var(--space-6);
@@ -845,6 +850,59 @@ tbody tr:hover {
     background-color: var(--surface);
 }
 
+/* 6.13 Estimate Approval */
+.approval-section {
+    margin-top: var(--space-6);
+    text-align: center;
+}
+.approval-section p {
+    max-width: 600px;
+    margin: 0 auto var(--space-6) auto;
+}
+.approval-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border-radius: var(--border-radius);
+    text-align: left;
+}
+.approval-status.approved {
+    background-color: hsl(var(--success-hue), 80%, 95%);
+    color: hsl(var(--success-hue), 60%, 30%);
+}
+.approval-status svg {
+    width: 32px;
+    height: 32px;
+}
+.approval-status p {
+    margin: 0;
+    font-size: var(--text-sm);
+}
+
+.estimate-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+.approval-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    background-color: hsl(var(--success-hue), 80%, 90%);
+    color: hsl(var(--success-hue), 60%, 30%);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--border-radius-full);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    white-space: nowrap;
+}
+.approval-badge svg {
+    width: 16px;
+    height: 16px;
+}
 
 /* 7. Accessibility & Mobile */
 @media (prefers-reduced-motion: reduce) {
@@ -929,7 +987,7 @@ tbody tr:hover {
 @media print {
     body { background-color: #fff; background-image: none; }
     header, .fab, .back-button, .project-header-actions, .item-actions, .form-actions button, .modal-overlay,
-    .print-button, .public-footer, .btn, .action-btn, .settings-btn, .estimate-summary-container .discount-controls, .reports-header, .bottom-nav { display: none !important; }
+    .print-button, .public-footer, .btn, .action-btn, .settings-btn, .estimate-summary-container .discount-controls, .reports-header, .bottom-nav, .approval-section { display: none !important; }
     .app-container, .public-estimate-container { max-width: 100%; padding: 0; margin: 0; }
     .card, .report-card { box-shadow: none; border: 1px solid #ccc; padding: 1rem; page-break-inside: avoid; border-radius: 0; }
     h1, h2, h3 { color: #000; }

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, createContext, useContext, useCallback, Dispatch, SetStateAction } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -95,6 +94,7 @@ interface Project {
     payments: Payment[];
     discount?: Discount;
     contractor?: UserProfile;
+    estimateApprovedOn?: string;
 }
 
 // --- HOOK FOR LOCALSTORAGE ---
@@ -141,29 +141,29 @@ const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reje
     reader.onerror = error => reject(error);
 });
 
+// --- SIMULATED API HELPERS ---
+const _get = <T,>(key: string, defaultValue: T): T => {
+    return JSON.parse(localStorage.getItem(key) || JSON.stringify(defaultValue));
+};
+
+const _set = <T,>(key: string, value: T) => {
+    localStorage.setItem(key, JSON.stringify(value));
+};
+
+const _delay = (ms = 500) => {
+    return new Promise<void>(res => setTimeout(res, ms));
+};
+
 // --- SIMULATED API ---
 const api: {
-    _get: <T>(key: string, defaultValue: T) => T;
-    _set: <T>(key: string, value: T) => void;
-    _delay: (ms?: number) => Promise<void>;
     login: (email: string, password: string) => Promise<User>;
     register: (email: string, password: string) => Promise<User>;
     getData: (userKey: string) => Promise<{ projects: Project[]; directory: DirectoryItem[]; profile: UserProfile; }>;
     saveData: <T>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T) => Promise<void>;
 } = {
-    _get<T>(key: string, defaultValue: T): T {
-        return JSON.parse(localStorage.getItem(key) || JSON.stringify(defaultValue));
-    },
-    _set<T>(key: string, value: T) {
-        localStorage.setItem(key, JSON.stringify(value));
-    },
-    _delay(ms = 500) {
-        return new Promise<void>(res => setTimeout(res, ms));
-    },
-
     async login(email: string, password: string): Promise<User> {
-        await this._delay();
-        const users = this._get<User[]>('prorab_users', []);
+        await _delay();
+        const users = _get<User[]>('prorab_users', []);
         const user = users.find(u => u.email === email);
         if (user && user.password === password) {
             return { email: user.email };
@@ -172,21 +172,21 @@ const api: {
     },
 
     async register(email: string, password: string): Promise<User> {
-        await this._delay(700);
-        const users = this._get<User[]>('prorab_users', []);
+        await _delay(700);
+        const users = _get<User[]>('prorab_users', []);
         if (users.some(u => u.email === email)) {
             throw new Error('Пользователь с таким email уже существует.');
         }
         const newUser: User = { email, password };
-        this._set('prorab_users', [...users, newUser]);
+        _set('prorab_users', [...users, newUser]);
         return { email: newUser.email };
     },
 
     async getData(userKey: string): Promise<{ projects: Project[], directory: DirectoryItem[], profile: UserProfile }> {
-        await this._delay(800);
-        const projects = this._get<Project[]>(`prorab_projects_${userKey}`, []);
-        let directory = this._get<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
-        const profile = this._get<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
+        await _delay(800);
+        const projects = _get<Project[]>(`prorab_projects_${userKey}`, []);
+        let directory = _get<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
+        const profile = _get<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
         
         // --- Data Migration for Directory Items without IDs ---
         let directoryNeedsUpdate = false;
@@ -200,7 +200,7 @@ const api: {
         });
 
         if (directoryNeedsUpdate) {
-            this._set(`prorab_directory_${userKey}`, directory);
+            _set(`prorab_directory_${userKey}`, directory);
         }
         // --- End Migration ---
 
@@ -208,14 +208,14 @@ const api: {
         const allProjects = Object.keys(localStorage)
             .filter(k => k.startsWith('prorab_projects_'))
             .flatMap(k => JSON.parse(localStorage.getItem(k) || '[]'));
-        this._set('prorab_projects_all', allProjects);
+        _set('prorab_projects_all', allProjects);
         
         return { projects, directory, profile };
     },
 
     async saveData<T>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T): Promise<void> {
-        await this._delay();
-        this._set(`prorab_${dataType}_${userKey}`, data);
+        await _delay();
+        _set(`prorab_${dataType}_${userKey}`, data);
     }
 };
 
@@ -500,7 +500,15 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
     return (
         <div className="card">
             <div className="d-flex justify-between align-center mb-1">
-                <h3>Смета</h3>
+                <div className="estimate-header">
+                    <h3>Смета</h3>
+                    {project.estimateApprovedOn && (
+                        <span className="approval-badge">
+                            <CheckIcon />
+                            Согласована клиентом {new Date(project.estimateApprovedOn).toLocaleDateString('ru-RU')}
+                        </span>
+                    )}
+                </div>
                 <div>
                      <button className="btn btn-secondary btn-sm" onClick={() => setShowShoppingListModal(true)}>Список покупок</button>
                      <button className="btn btn-secondary btn-sm" onClick={handleShare} style={{marginLeft: '0.5rem'}}>Поделиться</button>
@@ -1200,9 +1208,9 @@ const PublicEstimateView = () => {
     const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
     const projectId = urlParams.get('projectId');
     const [project, setProject] = useState<Project | null | undefined>(undefined);
+    const [isApproving, setIsApproving] = useState(false);
 
     useEffect(() => {
-        // In a real app, you'd fetch this data. We'll simulate by reading from localStorage.
         try {
             const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]') as Project[];
             const foundProject = allProjects.find(p => p.id === projectId);
@@ -1211,6 +1219,43 @@ const PublicEstimateView = () => {
             setProject(null);
         }
     }, [projectId]);
+
+    const handleApprove = () => {
+        if (!project || !window.confirm('Вы уверены, что хотите согласовать эту смету? Это действие нельзя отменить.')) return;
+
+        setIsApproving(true);
+        const approvalDate = new Date().toISOString();
+
+        try {
+            // Simulate async operation
+            setTimeout(() => {
+                // Update the project in the "all projects" cache
+                const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]') as Project[];
+                const updatedAllProjects = allProjects.map(p => p.id === projectId ? { ...p, estimateApprovedOn: approvalDate } : p);
+                localStorage.setItem('prorab_projects_all', JSON.stringify(updatedAllProjects));
+
+                // Find and update the project in its original user-specific storage
+                const projectKeys = Object.keys(localStorage).filter(k => k.startsWith('prorab_projects_') && k !== 'prorab_projects_all');
+                for (const key of projectKeys) {
+                    const userProjects = JSON.parse(localStorage.getItem(key) || '[]') as Project[];
+                    const projectIndex = userProjects.findIndex(p => p.id === projectId);
+                    if (projectIndex > -1) {
+                        userProjects[projectIndex].estimateApprovedOn = approvalDate;
+                        localStorage.setItem(key, JSON.stringify(userProjects));
+                        break; // Assume project ID is unique across all users
+                    }
+                }
+                
+                setProject(prev => prev ? { ...prev, estimateApprovedOn: approvalDate } : null);
+                setIsApproving(false);
+            }, 700);
+        } catch (e) {
+            console.error("Failed to approve estimate", e);
+            alert('Произошла ошибка при согласовании. Пожалуйста, попробуйте позже.');
+            setIsApproving(false);
+        }
+    };
+
 
     if (project === undefined) {
         return <Loader fullScreen />;
@@ -1318,6 +1363,25 @@ const PublicEstimateView = () => {
                          <span>{formatCurrency(total)}</span>
                      </div>
                  </div>
+            </div>
+
+             <div className="card approval-section">
+                {project.estimateApprovedOn ? (
+                    <div className="approval-status approved">
+                        <CheckIcon />
+                        <div>
+                            <strong>Смета согласована</strong>
+                            <p>Дата: {new Date(project.estimateApprovedOn).toLocaleDateString('ru-RU')}</p>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <p>Пожалуйста, внимательно проверьте все позиции. Нажимая кнопку "Согласовать", вы подтверждаете свое согласие с объемом работ и их стоимостью.</p>
+                        <button className="btn btn-primary btn-large" onClick={handleApprove} disabled={isApproving}>
+                            {isApproving ? <Loader/> : 'Согласовать смету'}
+                        </button>
+                    </>
+                )}
             </div>
 
             <footer className="public-footer">
