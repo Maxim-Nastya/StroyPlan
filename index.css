@@ -1025,17 +1025,29 @@ tbody tr:hover {
 /* 6.16 NEW: Project Details Sections */
 .notes-textarea {
     width: 100%;
-    min-height: 150px;
+    min-height: 100px;
     resize: vertical;
 }
 
-.schedule-list, .document-list, .inventory-list {
+.add-note-form {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-color);
+}
+.add-note-form input {
+    flex-grow: 1;
+}
+
+.data-list {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    margin-top: var(--space-4);
 }
 
-.schedule-item, .document-item, .inventory-item {
+.data-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1043,20 +1055,26 @@ tbody tr:hover {
     background-color: hsl(var(--surface-muted));
     border-radius: var(--border-radius-sm);
 }
-.schedule-item-info, .document-item-info, .inventory-item-info {
+.data-item-info {
     display: flex;
     flex-direction: column;
+    flex-grow: 1;
+    padding-right: var(--space-3);
 }
-.schedule-item-dates, .document-item-filename, .inventory-item-location {
+.data-item-info p {
+    color: hsl(var(--text-primary));
+    margin: 0;
+}
+.data-item-subtext {
     font-size: var(--text-sm);
     color: hsl(var(--text-secondary));
 }
-.document-item-info a {
+.data-item-info a {
     color: hsl(var(--primary-dark));
     text-decoration: none;
     font-weight: 500;
 }
-.document-item-info a:hover {
+.data-item-info a:hover {
     text-decoration: underline;
 }
 

@@ -141,6 +141,12 @@ interface InventoryItem {
     location: string; // 'На базе' or projectId
 }
 
+interface ProjectNote {
+    id: string;
+    text: string;
+    createdAt: string;
+}
+
 interface Project {
     id: string;
     name: string;
@@ -152,7 +158,7 @@ interface Project {
     payments: Payment[];
     contractor?: UserProfile;
     photoReports?: PhotoReport[];
-    notes?: string;
+    notes?: ProjectNote[];
     schedule?: ProjectScheduleItem[];
     documents?: ProjectDocument[];
 }
@@ -267,6 +273,7 @@ const api: {
         // --- Data Migration for multiple estimates ---
         let projectsNeedUpdate = false;
         projects = projects.map(p => {
+            let tempProject: any = { ...p };
             // @ts-ignore - check for old structure
             if (p.estimate) {
                 projectsNeedUpdate = true;
@@ -280,17 +287,25 @@ const api: {
                     // @ts-ignore
                     approvedOn: p.estimateApprovedOn
                 };
-                const newProject = { ...p, estimates: [newEstimate] };
-                // @ts-ignore
-                delete newProject.estimate;
-                // @ts-ignore
-                delete newProject.discount;
-                // @ts-ignore
-                delete newProject.estimateApprovedOn;
-                return newProject as Project;
+                tempProject.estimates = [newEstimate];
+                delete tempProject.estimate;
+                delete tempProject.discount;
+                delete tempProject.estimateApprovedOn;
             }
-            return p;
+
+            // --- Data Migration for notes from string to array ---
+            if (tempProject.notes && typeof tempProject.notes === 'string' && tempProject.notes.trim() !== '') {
+                projectsNeedUpdate = true;
+                const newNote: ProjectNote = {
+                    id: generateId(),
+                    text: tempProject.notes,
+                    createdAt: new Date().toISOString()
+                };
+                tempProject.notes = [newNote];
+            }
+            return tempProject as Project;
         });
+
 
         if (projectsNeedUpdate) {
             _set(`prorab_projects_${userKey}`, projects);
@@ -1377,30 +1392,101 @@ const ActGenerationModal = ({ show, onClose, project }: ActGenerationModalProps)
 
 
 interface ProjectNotesProps {
-    notes: string;
-    onSave: (notes: string) => void;
+    notes: ProjectNote[];
+    onUpdate: (notes: ProjectNote[]) => void;
 }
-const ProjectNotes = ({ notes, onSave }: ProjectNotesProps) => {
-    const [currentNotes, setCurrentNotes] = useState(notes || '');
+const ProjectNotes = ({ notes, onUpdate }: ProjectNotesProps) => {
+    const [newNoteText, setNewNoteText] = useState('');
+    const [editingNote, setEditingNote] = useState<ProjectNote | null>(null);
+    const [editedText, setEditedText] = useState('');
     const { addToast } = useToasts();
 
-    const handleSave = () => {
-        onSave(currentNotes);
-        addToast('Заметки сохранены', 'success');
+    const handleAddNote = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newNoteText.trim()) return;
+
+        const newNote: ProjectNote = {
+            id: generateId(),
+            text: newNoteText.trim(),
+            createdAt: new Date().toISOString(),
+        };
+        onUpdate([...notes, newNote]);
+        setNewNoteText('');
+        addToast('Заметка добавлена', 'success');
+    };
+
+    const handleDeleteNote = (id: string) => {
+        if (window.confirm('Удалить эту заметку?')) {
+            onUpdate(notes.filter(note => note.id !== id));
+            addToast('Заметка удалена', 'success');
+        }
+    };
+
+    const openEditModal = (note: ProjectNote) => {
+        setEditingNote(note);
+        setEditedText(note.text);
+    };
+
+    const handleSaveEditedNote = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingNote || !editedText.trim()) return;
+
+        const updatedNotes = notes.map(note =>
+            note.id === editingNote.id ? { ...note, text: editedText.trim() } : note
+        );
+        onUpdate(updatedNotes);
+        setEditingNote(null);
+        addToast('Заметка обновлена', 'success');
     };
 
     return (
         <div className="card">
             <h3>Заметки по проекту</h3>
-            <textarea
-                className="notes-textarea"
-                value={currentNotes}
-                onChange={e => setCurrentNotes(e.target.value)}
-                placeholder="Здесь можно записать важную информацию, замеры, идеи..."
-            />
-            <div className="form-actions" style={{ paddingTop: 'var(--space-4)', borderTop: 'none', marginTop: 'var(--space-4)' }}>
-                <button className="btn btn-primary" onClick={handleSave}>Сохранить заметки</button>
-            </div>
+            {notes.length === 0 ? (
+                <div className="transaction-list-empty">Заметок пока нет.</div>
+            ) : (
+                <div className="data-list">
+                    {notes.map(note => (
+                        <div key={note.id} className="data-item">
+                            <div className="data-item-info">
+                                <p>{note.text}</p>
+                            </div>
+                            <div className="item-actions">
+                                <button className="action-btn" onClick={() => openEditModal(note)}><EditIcon/></button>
+                                <button className="action-btn" onClick={() => handleDeleteNote(note.id)}><DeleteIcon/></button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+            <form className="add-note-form" onSubmit={handleAddNote}>
+                <input
+                    type="text"
+                    value={newNoteText}
+                    onChange={e => setNewNoteText(e.target.value)}
+                    placeholder="Новая заметка..."
+                />
+                <button type="submit" className="btn btn-primary">Добавить</button>
+            </form>
+            
+            {editingNote && (
+                 <Modal show={!!editingNote} onClose={() => setEditingNote(null)} title="Редактировать заметку">
+                     <form onSubmit={handleSaveEditedNote}>
+                         <div className="form-group">
+                            <textarea
+                                className="notes-textarea"
+                                value={editedText}
+                                onChange={e => setEditedText(e.target.value)}
+                                rows={5}
+                            />
+                         </div>
+                         <div className="form-actions">
+                             <button type="button" className="btn btn-secondary" onClick={() => setEditingNote(null)}>Отмена</button>
+                             <button type="submit" className="btn btn-primary">Сохранить</button>
+                         </div>
+                     </form>
+                 </Modal>
+            )}
         </div>
     );
 };
@@ -1453,12 +1539,12 @@ const ProjectSchedule = ({ schedule, onUpdate }: ProjectScheduleProps) => {
             {schedule.length === 0 ? (
                 <div className="transaction-list-empty">Этапы работ не запланированы.</div>
             ) : (
-                <div className="schedule-list">
+                <div className="data-list">
                     {schedule.map(item => (
-                        <div key={item.id} className="schedule-item">
-                            <div className="schedule-item-info">
+                        <div key={item.id} className="data-item">
+                            <div className="data-item-info">
                                 <strong>{item.name}</strong>
-                                <span className="schedule-item-dates">
+                                <span className="data-item-subtext">
                                     {new Date(item.startDate).toLocaleDateString()} - {item.endDate ? new Date(item.endDate).toLocaleDateString() : '...'}
                                 </span>
                             </div>
@@ -1552,12 +1638,12 @@ const ProjectDocuments = ({ documents, onUpdate }: ProjectDocumentsProps) => {
             {documents.length === 0 ? (
                  <div className="transaction-list-empty">Документов нет.</div>
             ) : (
-                <div className="document-list">
+                <div className="data-list">
                     {documents.map(doc => (
-                        <div key={doc.id} className="document-item">
-                            <div className="document-item-info">
+                        <div key={doc.id} className="data-item">
+                            <div className="data-item-info">
                                 <a href={doc.file} download={doc.fileName} target="_blank" rel="noopener noreferrer">{doc.name}</a>
-                                <span className="document-item-filename">{doc.fileName}</span>
+                                <span className="data-item-subtext">{doc.fileName}</span>
                             </div>
                             <div className="item-actions">
                                 <button className="action-btn" onClick={() => handleDelete(doc.id)}><DeleteIcon/></button>
@@ -1692,7 +1778,7 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
             </div>
             <FinancialDashboard project={project} />
 
-            <ProjectNotes notes={project.notes || ''} onSave={(notes) => updateProjectField('notes', notes)} />
+            <ProjectNotes notes={project.notes || []} onUpdate={(notes) => updateProjectField('notes', notes)} />
             <ProjectSchedule schedule={project.schedule || []} onUpdate={(schedule) => updateProjectField('schedule', schedule)} />
             <ProjectDocuments documents={project.documents || []} onUpdate={(documents) => updateProjectField('documents', documents)} />
 
@@ -1764,7 +1850,7 @@ const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfil
                 expenses: [],
                 payments: [],
                 photoReports: [],
-                notes: '',
+                notes: [],
                 schedule: [],
                 documents: [],
                 contractor: userProfile
@@ -2244,12 +2330,12 @@ const PublicEstimateView = () => {
             {(project.schedule && project.schedule.length > 0) && (
                 <div className="card">
                     <h3>График работ</h3>
-                    <div className="schedule-list">
+                    <div className="data-list">
                          {project.schedule.map(item => (
-                            <div key={item.id} className="schedule-item">
-                                <div className="schedule-item-info">
+                            <div key={item.id} className="data-item">
+                                <div className="data-item-info">
                                     <strong>{item.name}</strong>
-                                    <span className="schedule-item-dates">
+                                    <span className="data-item-subtext">
                                         {new Date(item.startDate).toLocaleDateString()} - {item.endDate ? new Date(item.endDate).toLocaleDateString() : '...'}
                                     </span>
                                 </div>
@@ -2262,10 +2348,10 @@ const PublicEstimateView = () => {
             {(project.documents && project.documents.length > 0) && (
                 <div className="card">
                     <h3>Документы</h3>
-                    <div className="document-list">
+                    <div className="data-list">
                          {project.documents.map(doc => (
-                            <div key={doc.id} className="document-item">
-                                <div className="document-item-info">
+                            <div key={doc.id} className="data-item">
+                                <div className="data-item-info">
                                     <a href={doc.file} download={doc.fileName} target="_blank" rel="noopener noreferrer">{doc.name}</a>
                                 </div>
                             </div>
@@ -2737,12 +2823,12 @@ const InventoryView = ({ inventory, setInventory, projects, userKey, onBack }: I
                         <p>Ваш список инструмента пуст.</p>
                     </div>
                 ) : (
-                    <div className="inventory-list">
+                    <div className="data-list">
                         {inventory.map(item => (
-                            <div key={item.id} className="inventory-item">
-                                <div className="inventory-item-info">
+                            <div key={item.id} className="data-item">
+                                <div className="data-item-info">
                                     <strong>{item.name}</strong>
-                                    <span className="inventory-item-location">
+                                    <span className="data-item-subtext">
                                         {item.location === 'На базе' ? 'На базе' : `Объект: ${projectMap.get(item.location) || 'Неизвестно'}`}
                                     </span>
                                 </div>
