@@ -141,13 +141,13 @@ const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reje
 
 // --- SIMULATED API ---
 const api = {
-    _get: function<T,>(key: string, defaultValue: T): T {
+    _get<T>(key: string, defaultValue: T): T {
         return JSON.parse(localStorage.getItem(key) || JSON.stringify(defaultValue));
     },
-    _set: function<T,>(key: string, value: T) {
+    _set<T>(key: string, value: T) {
         localStorage.setItem(key, JSON.stringify(value));
     },
-    _delay: function(ms = 500) {
+    _delay(ms = 500) {
         return new Promise(res => setTimeout(res, ms));
     },
 
@@ -203,7 +203,7 @@ const api = {
         return { projects, directory, profile };
     },
 
-    async saveData<T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T): Promise<void> {
+    async saveData<T>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T): Promise<void> {
         await this._delay();
         this._set(`prorab_${dataType}_${userKey}`, data);
     }
