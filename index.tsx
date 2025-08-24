@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, createContext, useContext, useCallback, Dispatch, SetStateAction } from 'react';
 import { createRoot } from 'react-dom/client';
+import { GoogleGenAI } from '@google/genai';
 
 // --- PWA Service Worker Registration ---
 if ('serviceWorker' in navigator) {
@@ -29,6 +30,7 @@ const ProjectsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill=
 const SearchIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.5 14H14.71L14.43 13.73C15.41 12.59 16 11.11 16 9.5C16 5.91 13.09 3 9.5 3C5.91 3 3 5.91 3 9.5C3 13.09 5.91 16 9.5 16C11.11 16 12.59 15.41 13.73 14.43L14 14.71V15.5L19 20.49L20.49 19L15.5 14ZM9.5 14C7.01 14 5 11.99 5 9.5C5 7.01 7.01 5 9.5 5C11.99 5 14 7.01 14 9.5C14 11.99 11.99 14 9.5 14Z" fill="currentColor"/></svg>;
 const ShareIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 16.08C17.24 16.08 16.56 16.38 16.04 16.85L8.91 12.7C8.96 12.47 9 12.24 9 12C9 11.76 8.96 11.53 8.91 11.3L16.04 7.15C16.56 7.62 17.24 7.92 18 7.92C19.66 7.92 21 6.58 21 4.92C21 3.26 19.66 1.92 18 1.92C16.34 1.92 15 3.26 15 4.92C15 5.16 15.04 5.39 15.09 5.62L7.96 9.77C7.44 9.3 6.76 9 6 9C4.34 9 3 10.34 3 12C3 13.66 4.34 15 6 15C6.76 15 7.44 14.7 7.96 14.23L15.09 18.38C15.04 18.61 15 18.84 15 19.08C15 20.74 16.34 22.08 18 22.08C19.66 22.08 21 20.74 21 19.08C21 17.42 19.66 16.08 18 16.08Z" fill="currentColor"/></svg>;
 const ShoppingListIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11 9H13V6H11V9ZM11 13H13V11H11V13ZM11 17H13V15H11V17ZM7 20C7 20.55 7.45 21 8 21H16C16.55 21 17 20.55 17 20V7H8C7.45 7 7 7.45 7 8V20ZM16 4H12L11 3H7L6 4H2V6H18V4H16Z" fill="currentColor"/></svg>;
+const DocumentIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2ZM16 18H8V16H16V18ZM16 14H8V12H16V14ZM13 9V3.5L18.5 9H13Z" fill="currentColor"/></svg>;
 
 
 // --- DATA TYPES ---
@@ -1041,6 +1043,103 @@ const ProjectEditModal = ({ project, projects, show, onClose, setProjects, userK
     );
 };
 
+interface ActGenerationModalProps {
+    show: boolean;
+    onClose: () => void;
+    project: Project | null;
+}
+const ActGenerationModal = ({ show, onClose, project }: ActGenerationModalProps) => {
+    const [generatedAct, setGeneratedAct] = useState('');
+    const [isGenerating, setIsGenerating] = useState(false);
+    const { addToast } = useToasts();
+
+    const handleGenerate = useCallback(async () => {
+        if (!project) return;
+        setIsGenerating(true);
+        setGeneratedAct('');
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            
+            const subtotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
+            const discountAmount = project.discount ? (project.discount.type === 'percent' ? subtotal * (project.discount.value / 100) : project.discount.value) : 0;
+            const total = subtotal - discountAmount;
+
+            const prompt = `
+                Составь официальный документ "Акт сдачи-приемки выполненных работ".
+                Используй следующие данные:
+                - Город: (оставь пустым, если не указан в адресе)
+                - Дата: ${new Date().toLocaleDateString('ru-RU')} г.
+                - Исполнитель: ${project.contractor?.companyName || project.contractor?.contactName || 'Исполнитель'}
+                - Заказчик: ${project.client.name}
+                - Объект: "${project.name}" по адресу ${project.address}
+                - Общая сумма работ по смете: ${formatCurrency(total)} (${new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', currencyDisplay: 'name' }).formatToParts(total).map(p=>p.value).join('')})
+
+                В тексте акта укажи, что исполнитель выполнил все работы в полном объеме и в установленные сроки, а заказчик принял работы и не имеет претензий к качеству и объему.
+                В конце документа оставь места для подписей: "Исполнитель _______________" и "Заказчик _______________".
+                Структурируй документ четко, с заголовком, преамбулой, основной частью и реквизитами сторон.
+            `;
+            
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+            });
+
+            const text = response.text;
+            setGeneratedAct(text);
+
+        } catch (error) {
+            console.error("Gemini API error:", error);
+            addToast('Не удалось сгенерировать акт. Попробуйте позже.', 'error');
+            setGeneratedAct('Произошла ошибка при генерации документа. Проверьте API-ключ и повторите попытку.');
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [project, addToast]);
+
+    useEffect(() => {
+        if (show) {
+            handleGenerate();
+        }
+    }, [show, handleGenerate]);
+
+    const handleCopy = () => {
+        if (!generatedAct) return;
+        navigator.clipboard.writeText(generatedAct).then(() => {
+            addToast('Акт скопирован в буфер обмена!', 'success');
+        }, () => {
+            addToast('Не удалось скопировать текст.', 'error');
+        });
+    };
+
+    return (
+        <Modal show={show} onClose={onClose} title="Генерация Акта выполненных работ">
+            {isGenerating ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem 0' }}>
+                    <Loader />
+                    <p>Нейросеть составляет документ...</p>
+                </div>
+            ) : (
+                <>
+                    <textarea 
+                        className="act-textarea"
+                        value={generatedAct}
+                        onChange={(e) => setGeneratedAct(e.target.value)}
+                        rows={15}
+                        readOnly={isGenerating}
+                    />
+                    <div className="form-actions">
+                        <button type="button" className="btn btn-secondary" onClick={onClose}>Закрыть</button>
+                        <button type="button" className="btn btn-primary" onClick={handleCopy} disabled={!generatedAct}>
+                           Скопировать
+                        </button>
+                    </div>
+                </>
+            )}
+        </Modal>
+    );
+};
+
+
 interface ProjectDetailsProps {
     project: Project;
     projects: Project[];
@@ -1052,6 +1151,7 @@ interface ProjectDetailsProps {
 }
 const ProjectDetails = ({ project, projects, setProjects, onBack, directory, setDirectory, userKey }: ProjectDetailsProps) => {
     const [isEditing, setIsEditing] = useState(false);
+    const [showActModal, setShowActModal] = useState(false);
     const { addToast } = useToasts();
     
     const handleToggleStatus = async () => {
@@ -1089,6 +1189,11 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
                          <button className="action-btn" onClick={handleToggleStatus} aria-label={project.status === 'В работе' ? "Завершить проект" : "Вернуть в работу"}>
                              {project.status === 'В работе' ? <CheckIcon /> : <ReplayIcon />}
                          </button>
+                          {project.status === 'Завершен' && (
+                            <button className="action-btn" onClick={() => setShowActModal(true)} aria-label="Создать Акт выполненных работ">
+                                <DocumentIcon />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -1098,6 +1203,7 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
             <PhotoReports project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
 
             <ProjectEditModal project={project} projects={projects} show={isEditing} onClose={() => setIsEditing(false)} setProjects={setProjects} userKey={userKey}/>
+            <ActGenerationModal show={showActModal} onClose={() => setShowActModal(false)} project={project} />
         </div>
     );
 };

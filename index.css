@@ -1040,6 +1040,26 @@ tbody tr:hover {
     font-size: var(--text-sm);
 }
 
+/* 6.15 Act Generation Modal */
+.act-textarea {
+    width: 100%;
+    min-height: 40vh;
+    font-family: var(--font-family);
+    font-size: var(--text-base);
+    line-height: 1.6;
+    padding: var(--space-4);
+    border-radius: var(--border-radius-sm);
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--surface-muted));
+    resize: vertical;
+}
+.act-textarea:focus {
+    outline: none;
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.2);
+    background-color: var(--surface);
+}
+
 
 /* 7. Accessibility & Mobile */
 @media (prefers-reduced-motion: reduce) {
