@@ -27,8 +27,9 @@
     <!-- 
       Тип скрипта изменен на "text/babel", чтобы Babel мог его обработать.
       'data-type="module"' указывает Babel, что это ES-модуль, что позволяет использовать 'import'.
+      'data-presets' инструктирует Babel использовать пресеты для React (JSX) и TypeScript.
       Путь 'src' сделан относительным для поддержки развертывания в подкаталогах (как на GitHub Pages).
     -->
-    <script type="text/babel" data-type="module" src="./index.tsx"></script>
+    <script type="text/babel" data-type="module" data-presets="react,typescript" src="./index.tsx"></script>
 </body>
 </html>
