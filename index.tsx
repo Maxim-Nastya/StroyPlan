@@ -161,6 +161,8 @@ interface Project {
     notes?: ProjectNote[];
     schedule?: ProjectScheduleItem[];
     documents?: ProjectDocument[];
+    createdAt: string; // ISO Date string
+    completedAt?: string; // ISO Date string
 }
 
 // --- HOOK FOR LOCALSTORAGE ---
@@ -304,6 +306,13 @@ const api: {
                 };
                 tempProject.notes = [newNote];
             }
+            
+            // --- Data Migration to add createdAt date ---
+            if (!tempProject.createdAt) {
+                projectsNeedUpdate = true;
+                tempProject.createdAt = new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString();
+            }
+
             return tempProject as Project;
         });
 
@@ -1707,7 +1716,7 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
         
         if (window.confirm(confirmationText)) {
             try {
-                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, status: newStatus } : p);
+                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, status: newStatus, completedAt: newStatus === 'Завершен' ? new Date().toISOString() : undefined } : p);
                 setProjects(updatedProjects);
                 await api.saveData(userKey, 'projects', updatedProjects);
                 addToast(`Статус проекта изменен на "${newStatus}"`, 'success');
@@ -1861,7 +1870,8 @@ const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfil
                 notes: [],
                 schedule: [],
                 documents: [],
-                contractor: userProfile
+                contractor: userProfile,
+                createdAt: new Date().toISOString()
             };
             const updatedProjects = [project, ...projects];
             setProjects(updatedProjects);
@@ -2499,45 +2509,104 @@ interface ReportsViewProps {
 }
 const ReportsView = ({ projects, onBack }: ReportsViewProps) => {
     const { addToast } = useToasts();
-    const overallStats = useMemo(() => {
+    
+    const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
+    const getFirstDayOfYear = (date: Date) => new Date(date.getFullYear(), 0, 1);
+
+    const [startDate, setStartDate] = useState<string>(getFirstDayOfYear(new Date()).toISOString().split('T')[0]);
+    const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+    const filteredProjects = useMemo(() => {
+        if (!startDate || !endDate) return [];
+        const start = new Date(startDate).getTime();
+        const end = new Date(endDate).getTime() + (24 * 60 * 60 * 1000 - 1); // include the whole end day
+        
+        return projects.filter(p => {
+             // We consider a project to be in the period if it was completed within the period.
+            const completedDate = p.completedAt ? new Date(p.completedAt).getTime() : 0;
+            return p.status === 'Завершен' && completedDate >= start && completedDate <= end;
+        });
+    }, [projects, startDate, setEndDate]);
+
+    const stats = useMemo(() => {
         let totalRevenue = 0;
         let totalExpenses = 0;
-        let totalProfit = 0;
-
-        projects.forEach(project => {
-            const projectRevenue = project.estimates.reduce((projectSum, estimate) => {
+        
+        const projectBreakdown = filteredProjects.map(project => {
+            const estimateTotal = project.estimates.reduce((projectSum, estimate) => {
                 const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
                 const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
                 return projectSum + (subtotal - discountAmount);
             }, 0);
 
-            const materialCosts = project.estimates.flatMap(e => e.items).filter(item => item.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0);
+            const workTotal = project.estimates.flatMap(e => e.items)
+                .filter(item => item.type === 'Работа')
+                .reduce((sum, item) => sum + item.quantity * item.price, 0);
+
             const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
-            const profit = projectRevenue - materialCosts - expensesTotal;
+            
+            const profit = workTotal - expensesTotal;
 
-            totalRevenue += projectRevenue;
+            totalRevenue += estimateTotal;
             totalExpenses += expensesTotal;
-            totalProfit += profit;
-        });
+            
+            return {
+                id: project.id,
+                name: project.name,
+                revenue: estimateTotal,
+                expenses: expensesTotal,
+                profit: profit
+            };
+        }).sort((a,b) => b.profit - a.profit);
+        
+        const totalProfit = projectBreakdown.reduce((sum, p) => sum + p.profit, 0);
+        const averageRevenue = filteredProjects.length > 0 ? totalRevenue / filteredProjects.length : 0;
+        const averageProfit = filteredProjects.length > 0 ? totalProfit / filteredProjects.length : 0;
 
-        return { totalRevenue, totalExpenses, totalProfit };
-    }, [projects]);
+        return { totalRevenue, totalExpenses, totalProfit, averageRevenue, averageProfit, projectBreakdown };
+    }, [filteredProjects]);
+
+    const setDateRange = (range: 'this_month' | 'last_month' | 'this_year') => {
+        const today = new Date();
+        let start, end;
+
+        switch(range) {
+            case 'this_month':
+                start = getFirstDayOfMonth(today);
+                end = today;
+                break;
+            case 'last_month':
+                const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                start = getFirstDayOfMonth(lastMonth);
+                end = new Date(today.getFullYear(), today.getMonth(), 0);
+                break;
+            case 'this_year':
+                start = getFirstDayOfYear(today);
+                end = today;
+                break;
+        }
+        setStartDate(start.toISOString().split('T')[0]);
+        setEndDate(end.toISOString().split('T')[0]);
+    };
 
     const handleExportCsv = () => {
         try {
             const headers = ['Название проекта', 'Клиент', 'Статус', 'Сумма смет', 'Расходы', 'Оплачено', 'Прибыль'];
             
-            const rows = projects.map(project => {
+            const rows = filteredProjects.map(project => {
                 const estimateTotal = project.estimates.reduce((projectSum, estimate) => {
                     const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
                     const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
                     return projectSum + (subtotal - discountAmount);
                 }, 0);
 
-                const materialCosts = project.estimates.flatMap(e => e.items).filter(item => item.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0);
+                 const workTotal = project.estimates.flatMap(e => e.items)
+                    .filter(item => item.type === 'Работа')
+                    .reduce((sum, item) => sum + item.quantity * item.price, 0);
+
                 const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
                 const totalPaid = project.payments.reduce((sum, payment) => sum + payment.amount, 0);
-                const profit = estimateTotal - materialCosts - expensesTotal;
+                const profit = workTotal - expensesTotal;
                 
                 const sanitize = (val: string) => `"${val.replace(/"/g, '""')}"`;
 
@@ -2579,31 +2648,91 @@ const ReportsView = ({ projects, onBack }: ReportsViewProps) => {
             </button>
             <div className="reports-header">
                 <h2>Сводный отчет</h2>
-                <button className="btn btn-primary" onClick={handleExportCsv} disabled={projects.length === 0}>
+                <button className="btn btn-primary" onClick={handleExportCsv} disabled={filteredProjects.length === 0}>
                     Скачать отчет (CSV)
                 </button>
             </div>
+
+            <div className="card date-filter-container">
+                <div className="form-group">
+                    <label>Период (по дате завершения)</label>
+                    <div className="d-flex" style={{gap: 'var(--space-4)', alignItems: 'center'}}>
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                        <span>&mdash;</span>
+                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                    </div>
+                </div>
+                <div className="d-flex" style={{gap: 'var(--space-3)', flexWrap: 'wrap'}}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setDateRange('this_month')}>Этот месяц</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setDateRange('last_month')}>Прошлый месяц</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setDateRange('this_year')}>Этот год</button>
+                </div>
+            </div>
+
             <div className="reports-grid">
                 <div className="report-card">
                     <div className="report-card-label">Общая выручка</div>
-                    <div className="report-card-value">{formatCurrency(overallStats.totalRevenue)}</div>
+                    <div className="report-card-value">{formatCurrency(stats.totalRevenue)}</div>
                 </div>
                 <div className="report-card">
                     <div className="report-card-label">Общие расходы</div>
-                    <div className="report-card-value">{formatCurrency(overallStats.totalExpenses)}</div>
+                    <div className="report-card-value">{formatCurrency(stats.totalExpenses)}</div>
                 </div>
                 <div className="report-card">
                     <div className="report-card-label">Итоговая прибыль</div>
-                    <div className={`report-card-value ${overallStats.totalProfit >= 0 ? 'profit' : 'loss'}`}>
-                        {formatCurrency(overallStats.totalProfit)}
+                    <div className={`report-card-value ${stats.totalProfit >= 0 ? 'profit' : 'loss'}`}>
+                        {formatCurrency(stats.totalProfit)}
                     </div>
                 </div>
             </div>
-             {projects.length === 0 && (
-                <div className="empty-state">
-                    <p>Нет данных для формирования отчета.</p>
+             <div className="reports-grid small">
+                <div className="report-card small">
+                    <div className="report-card-label">Завершено проектов</div>
+                    <div className="report-card-value">{filteredProjects.length}</div>
                 </div>
-            )}
+                <div className="report-card small">
+                    <div className="report-card-label">Средний чек</div>
+                    <div className="report-card-value">{formatCurrency(stats.averageRevenue)}</div>
+                </div>
+                <div className="report-card small">
+                    <div className="report-card-label">Средняя прибыль</div>
+                    <div className={`report-card-value ${stats.averageProfit >= 0 ? 'profit' : 'loss'}`}>
+                        {formatCurrency(stats.averageProfit)}
+                    </div>
+                </div>
+            </div>
+
+            <div className="card">
+                <h3>Прибыльность по проектам</h3>
+                {stats.projectBreakdown.length === 0 ? (
+                    <div className="empty-state" style={{padding: 'var(--space-6)'}}>
+                        <p>Нет завершенных проектов за выбранный период.</p>
+                    </div>
+                ) : (
+                    <div className="table-container">
+                        <table className="profit-table">
+                            <thead>
+                                <tr>
+                                    <th>Проект</th>
+                                    <th className="align-right">Выручка</th>
+                                    <th className="align-right">Расходы</th>
+                                    <th className="align-right">Прибыль</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {stats.projectBreakdown.map(p => (
+                                    <tr key={p.id}>
+                                        <td>{p.name}</td>
+                                        <td className="align-right">{formatCurrency(p.revenue)}</td>
+                                        <td className="align-right">{formatCurrency(p.expenses)}</td>
+                                        <td className={`align-right ${p.profit >= 0 ? 'profit' : 'loss'}`}>{formatCurrency(p.profit)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
