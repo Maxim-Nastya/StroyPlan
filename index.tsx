@@ -839,16 +839,16 @@ const PublicEstimateView = ({ projects, projectId }: { projects: Project[], proj
             </div>
 
             <footer className="public-footer">
-                <p>Смета сформирована в <a href={window.location.origin} target="_blank" rel="noopener noreferrer">SiteKick</a></p>
+                <p>Смета сформирована в <a href={window.location.origin} target="_blank" rel="noopener noreferrer">Прораб</a></p>
             </footer>
         </div>
     );
 };
 
 const App = () => {
-    const [projects, setProjects] = useLocalStorage<Project[]>('sitekick_projects', []);
-    const [directory, setDirectory] = useLocalStorage<DirectoryItem[]>('sitekick_directory', []);
-    const [userProfile, setUserProfile] = useLocalStorage<UserProfile>('sitekick_profile', { companyName: '', contactName: '', phone: '', logo: '' });
+    const [projects, setProjects] = useLocalStorage<Project[]>('prorab_projects', []);
+    const [directory, setDirectory] = useLocalStorage<DirectoryItem[]>('prorab_directory', []);
+    const [userProfile, setUserProfile] = useLocalStorage<UserProfile>('prorab_profile', { companyName: '', contactName: '', phone: '', logo: '' });
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
     const [showNewProjectModal, setShowNewProjectModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
@@ -881,7 +881,7 @@ const App = () => {
         <>
             <header>
                 <div className="header-content">
-                    <h1>SiteKick</h1>
+                    <h1>Прораб</h1>
                     <button className="settings-btn" onClick={() => setShowProfileModal(true)} title="Настройки профиля">
                         <SettingsIcon />
                     </button>
