@@ -538,8 +538,8 @@ tbody tr:hover {
 /* 6.7 Specific Components */
 .financial-summary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-    gap: var(--space-4);
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4) var(--space-2);
 }
 .summary-item { text-align: center; }
 .summary-item-label { font-size: var(--text-sm); color: hsl(var(--text-secondary)); margin-bottom: var(--space-1); }
@@ -1229,6 +1229,9 @@ tbody tr:hover {
     }
     .form-actions .btn {
         width: 100%;
+    }
+    .financial-summary-grid {
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 

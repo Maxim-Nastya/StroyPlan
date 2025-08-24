@@ -422,30 +422,26 @@ interface FinancialDashboardProps {
 }
 const FinancialDashboard = ({ project }: FinancialDashboardProps) => {
     const totals = useMemo(() => {
-        const projectSubtotal = project.estimates.reduce((projectSum, estimate) => {
-            const estimateSubtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
-            return projectSum + estimateSubtotal;
-        }, 0);
-
-        const projectDiscountAmount = project.estimates.reduce((projectSum, estimate) => {
-            const estimateSubtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+        const estimateTotal = project.estimates.reduce((projectSum, estimate) => {
+            const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
             const discountAmount = estimate.discount
-                ? (estimate.discount.type === 'percent' ? estimateSubtotal * (estimate.discount.value / 100) : estimate.discount.value)
+                ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value)
                 : 0;
-            return projectSum + discountAmount;
+            return projectSum + (subtotal - discountAmount);
         }, 0);
 
-        const estimateTotal = projectSubtotal - projectDiscountAmount;
-        
-        const materialCosts = project.estimates.flatMap(e => e.items)
-            .filter(item => item.type === 'Материал')
+        const workTotal = project.estimates.flatMap(e => e.items)
+            .filter(item => item.type === 'Работа')
             .reduce((sum, item) => sum + item.quantity * item.price, 0);
-            
+
         const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
         const totalPaid = project.payments.reduce((sum, payment) => sum + payment.amount, 0);
-        const profit = estimateTotal - materialCosts - expensesTotal;
+        
+        // Profit is the money for work minus additional expenses.
+        const profit = workTotal - expensesTotal;
+        const clientDebt = estimateTotal - totalPaid;
 
-        return { estimateTotal, expensesTotal, totalPaid, profit };
+        return { estimateTotal, workTotal, expensesTotal, totalPaid, profit, clientDebt };
     }, [project]);
 
     return (
@@ -456,12 +452,22 @@ const FinancialDashboard = ({ project }: FinancialDashboardProps) => {
                     <div className="summary-item-value">{formatCurrency(totals.estimateTotal)}</div>
                 </div>
                 <div className="summary-item">
-                    <div className="summary-item-label">Расходы</div>
-                    <div className="summary-item-value">{formatCurrency(totals.expensesTotal)}</div>
-                </div>
-                <div className="summary-item">
                     <div className="summary-item-label">Оплачено</div>
                     <div className="summary-item-value">{formatCurrency(totals.totalPaid)}</div>
+                </div>
+                <div className="summary-item">
+                    <div className="summary-item-label">Долг клиента</div>
+                    <div className={`summary-item-value ${totals.clientDebt > 0 ? 'loss' : ''}`}>
+                        {formatCurrency(totals.clientDebt)}
+                    </div>
+                </div>
+                 <div className="summary-item">
+                    <div className="summary-item-label">Стоимость работ</div>
+                    <div className="summary-item-value">{formatCurrency(totals.workTotal)}</div>
+                </div>
+                <div className="summary-item">
+                    <div className="summary-item-label">Расходы</div>
+                    <div className="summary-item-value">{formatCurrency(totals.expensesTotal)}</div>
                 </div>
                 <div className="summary-item">
                     <div className="summary-item-label">Прибыль</div>
