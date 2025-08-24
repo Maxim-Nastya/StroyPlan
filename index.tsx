@@ -458,6 +458,56 @@ const FinancialDashboard = ({ project }: FinancialDashboardProps) => {
     );
 };
 
+interface CommentModalProps {
+    show: boolean;
+    onClose: () => void;
+    item: EstimateItem | null;
+    onAddComment: (itemId: string, commentText: string) => void;
+}
+const CommentModal = ({ show, onClose, item, onAddComment }: CommentModalProps) => {
+    const [newComment, setNewComment] = useState('');
+    
+    if (!item) return null;
+
+    const handleCommentSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (newComment.trim()) {
+            onAddComment(item.id, newComment.trim());
+            setNewComment('');
+        }
+    };
+
+    return (
+        <Modal show={show} onClose={onClose} title={`Комментарии: ${item.name}`}>
+            <div className="comment-modal-body">
+                <div className="comment-thread">
+                    {(item.comments || []).length === 0 ? (
+                        <p style={{textAlign: 'center', color: 'hsl(var(--text-secondary))'}}>Комментариев пока нет.</p>
+                    ) : (
+                        item.comments?.map(comment => (
+                            <div key={comment.id} className={`comment-bubble author-${comment.author === 'Клиент' ? 'client' : 'contractor'}`}>
+                                <p>{comment.text}</p>
+                                <small>{new Date(comment.timestamp).toLocaleString('ru-RU')}</small>
+                            </div>
+                        ))
+                    )}
+                </div>
+                <form className="comment-form" onSubmit={handleCommentSubmit}>
+                    <input
+                        type="text"
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="Ваш комментарий..."
+                        style={{flex: 1}}
+                    />
+                    <button type="submit" className="btn btn-primary">Отправить</button>
+                </form>
+            </div>
+        </Modal>
+    );
+};
+
+
 interface EstimateEditorProps {
     estimate: Estimate;
     projectId: string;
@@ -480,6 +530,9 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
     const [discountType, setDiscountType] = useState<'percent' | 'fixed'>(estimate.discount?.type || 'percent');
     const [discountValue, setDiscountValue] = useState<number>(estimate.discount?.value || 0);
     const [estimateName, setEstimateName] = useState(estimate.name);
+
+    const [showCommentModal, setShowCommentModal] = useState(false);
+    const [commentingItem, setCommentingItem] = useState<EstimateItem | null>(null);
 
     useEffect(() => {
         setDiscountType(estimate.discount?.type || 'percent');
@@ -649,6 +702,29 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
 
         onSaveTemplate(template);
     };
+
+    const openCommentModal = (item: EstimateItem) => {
+        setCommentingItem(item);
+        setShowCommentModal(true);
+    };
+
+    const handleAddComment = (itemId: string, commentText: string) => {
+        const newComment: Comment = {
+            id: generateId(),
+            author: 'Исполнитель',
+            text: commentText,
+            timestamp: new Date().toISOString()
+        };
+
+        const updatedItems = estimate.items.map(item => {
+            if (item.id === itemId) {
+                return { ...item, comments: [...(item.comments || []), newComment] };
+            }
+            return item;
+        });
+
+        onUpdate({ ...estimate, items: updatedItems });
+    };
     
     return (
         <div className="card">
@@ -702,7 +778,10 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                                     <td className="align-right">{formatCurrency(item.quantity * item.price)}</td>
                                     <td className="align-right">
                                         <div className="item-actions">
-                                            {/* TODO: Add Commenting feature */}
+                                            <button className="action-btn comment-btn" onClick={() => openCommentModal(item)} aria-label="Комментарии">
+                                                <CommentIcon />
+                                                {(item.comments?.length || 0) > 0 && <span className="comment-badge">{item.comments?.length}</span>}
+                                            </button>
                                             <button className="action-btn" onClick={() => openModalForEdit(item)} aria-label="Редактировать"><EditIcon /></button>
                                             <button className="action-btn" onClick={() => handleDeleteItem(item.id)} aria-label="Удалить"><DeleteIcon /></button>
                                         </div>
@@ -825,6 +904,12 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                     </button>
                 </div>
             </Modal>
+            <CommentModal
+                show={showCommentModal}
+                onClose={() => setShowCommentModal(false)}
+                item={commentingItem}
+                onAddComment={handleAddComment}
+            />
         </div>
     );
 };
@@ -1291,6 +1376,219 @@ const ActGenerationModal = ({ show, onClose, project }: ActGenerationModalProps)
 };
 
 
+interface ProjectNotesProps {
+    notes: string;
+    onSave: (notes: string) => void;
+}
+const ProjectNotes = ({ notes, onSave }: ProjectNotesProps) => {
+    const [currentNotes, setCurrentNotes] = useState(notes || '');
+    const { addToast } = useToasts();
+
+    const handleSave = () => {
+        onSave(currentNotes);
+        addToast('Заметки сохранены', 'success');
+    };
+
+    return (
+        <div className="card">
+            <h3>Заметки по проекту</h3>
+            <textarea
+                className="notes-textarea"
+                value={currentNotes}
+                onChange={e => setCurrentNotes(e.target.value)}
+                placeholder="Здесь можно записать важную информацию, замеры, идеи..."
+            />
+            <div className="form-actions" style={{ paddingTop: 'var(--space-4)', borderTop: 'none', marginTop: 'var(--space-4)' }}>
+                <button className="btn btn-primary" onClick={handleSave}>Сохранить заметки</button>
+            </div>
+        </div>
+    );
+};
+
+interface ProjectScheduleProps {
+    schedule: ProjectScheduleItem[];
+    onUpdate: (schedule: ProjectScheduleItem[]) => void;
+}
+const ProjectSchedule = ({ schedule, onUpdate }: ProjectScheduleProps) => {
+    const [showModal, setShowModal] = useState(false);
+    const [editingItem, setEditingItem] = useState<ProjectScheduleItem | null>(null);
+    const [newItem, setNewItem] = useState<Omit<ProjectScheduleItem, 'id'>>({ name: '', startDate: '', endDate: '' });
+
+    const openModalForNew = () => {
+        setEditingItem(null);
+        setNewItem({ name: '', startDate: new Date().toISOString().split('T')[0], endDate: '' });
+        setShowModal(true);
+    };
+
+    const openModalForEdit = (item: ProjectScheduleItem) => {
+        setEditingItem(item);
+        setNewItem({ ...item });
+        setShowModal(true);
+    };
+
+    const handleSave = (e: React.FormEvent) => {
+        e.preventDefault();
+        let updatedSchedule;
+        if (editingItem) {
+            updatedSchedule = schedule.map(item => item.id === editingItem.id ? { ...item, ...newItem } : item);
+        } else {
+            updatedSchedule = [...schedule, { ...newItem, id: generateId() }];
+        }
+        onUpdate(updatedSchedule);
+        setShowModal(false);
+    };
+    
+    const handleDelete = (id: string) => {
+        if(window.confirm('Удалить этот этап?')) {
+            onUpdate(schedule.filter(item => item.id !== id));
+        }
+    };
+
+    return (
+        <div className="card">
+            <div className="d-flex justify-between align-center mb-1">
+                <h3>График работ</h3>
+                <button className="btn btn-primary btn-sm" onClick={openModalForNew}>+ Добавить этап</button>
+            </div>
+            {schedule.length === 0 ? (
+                <div className="transaction-list-empty">Этапы работ не запланированы.</div>
+            ) : (
+                <div className="schedule-list">
+                    {schedule.map(item => (
+                        <div key={item.id} className="schedule-item">
+                            <div className="schedule-item-info">
+                                <strong>{item.name}</strong>
+                                <span className="schedule-item-dates">
+                                    {new Date(item.startDate).toLocaleDateString()} - {item.endDate ? new Date(item.endDate).toLocaleDateString() : '...'}
+                                </span>
+                            </div>
+                            <div className="item-actions">
+                                <button className="action-btn" onClick={() => openModalForEdit(item)}><EditIcon/></button>
+                                <button className="action-btn" onClick={() => handleDelete(item.id)}><DeleteIcon/></button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+            <Modal show={showModal} onClose={() => setShowModal(false)} title={editingItem ? "Редактировать этап" : "Новый этап"}>
+                <form onSubmit={handleSave}>
+                    <div className="form-group">
+                        <label>Название этапа</label>
+                        <input type="text" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} required/>
+                    </div>
+                    <div className="d-flex gap-1">
+                        <div className="form-group w-100">
+                            <label>Дата начала</label>
+                            <input type="date" value={newItem.startDate} onChange={e => setNewItem({...newItem, startDate: e.target.value})} required/>
+                        </div>
+                        <div className="form-group w-100">
+                            <label>Дата окончания</label>
+                            <input type="date" value={newItem.endDate} onChange={e => setNewItem({...newItem, endDate: e.target.value})} />
+                        </div>
+                    </div>
+                    <div className="form-actions">
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Отмена</button>
+                        <button type="submit" className="btn btn-primary">Сохранить</button>
+                    </div>
+                </form>
+            </Modal>
+        </div>
+    );
+};
+
+interface ProjectDocumentsProps {
+    documents: ProjectDocument[];
+    onUpdate: (documents: ProjectDocument[]) => void;
+}
+const ProjectDocuments = ({ documents, onUpdate }: ProjectDocumentsProps) => {
+    const { addToast } = useToasts();
+    const [showModal, setShowModal] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [newDocument, setNewDocument] = useState({ name: '', file: null as File | null });
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            setNewDocument(prev => ({ ...prev, file: e.target.files![0], name: prev.name || e.target.files![0].name }));
+        }
+    };
+
+    const handleUpload = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newDocument.file) {
+            addToast('Выберите файл для загрузки', 'error');
+            return;
+        }
+        setIsUploading(true);
+        try {
+            const fileData = await fileToBase64(newDocument.file);
+            const doc: ProjectDocument = {
+                id: generateId(),
+                name: newDocument.name,
+                fileName: newDocument.file.name,
+                file: fileData
+            };
+            onUpdate([...documents, doc]);
+            setShowModal(false);
+            setNewDocument({ name: '', file: null });
+        } catch (err) {
+            addToast('Ошибка загрузки файла', 'error');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+    
+    const handleDelete = (id: string) => {
+        if (window.confirm('Удалить этот документ?')) {
+            onUpdate(documents.filter(doc => doc.id !== id));
+        }
+    };
+
+    return (
+        <div className="card">
+             <div className="d-flex justify-between align-center mb-1">
+                <h3>Документы</h3>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Загрузить</button>
+            </div>
+            {documents.length === 0 ? (
+                 <div className="transaction-list-empty">Документов нет.</div>
+            ) : (
+                <div className="document-list">
+                    {documents.map(doc => (
+                        <div key={doc.id} className="document-item">
+                            <div className="document-item-info">
+                                <a href={doc.file} download={doc.fileName} target="_blank" rel="noopener noreferrer">{doc.name}</a>
+                                <span className="document-item-filename">{doc.fileName}</span>
+                            </div>
+                            <div className="item-actions">
+                                <button className="action-btn" onClick={() => handleDelete(doc.id)}><DeleteIcon/></button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+             <Modal show={showModal} onClose={() => !isUploading && setShowModal(false)} title="Загрузить документ">
+                <form onSubmit={handleUpload}>
+                    <div className="form-group">
+                        <label>Файл</label>
+                        <input type="file" onChange={handleFileChange} required disabled={isUploading} />
+                    </div>
+                    <div className="form-group">
+                        <label>Название документа (необязательно)</label>
+                        <input type="text" value={newDocument.name} onChange={e => setNewDocument({...newDocument, name: e.target.value})} placeholder="Например, схема электрики" disabled={isUploading}/>
+                    </div>
+                     <div className="form-actions">
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={isUploading}>Отмена</button>
+                        <button type="submit" className="btn btn-primary" disabled={isUploading}>
+                            {isUploading ? <Loader /> : 'Загрузить'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+        </div>
+    );
+};
+
+
 interface ProjectDetailsProps {
     project: Project;
     projects: Project[];
@@ -1325,16 +1623,15 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
         }
     };
     
-    const handleUpdateEstimate = async (updatedEstimate: Estimate) => {
-        const updatedProjects = projects.map(p => {
-            if (p.id === project.id) {
-                const newEstimates = p.estimates.map(e => e.id === updatedEstimate.id ? updatedEstimate : e);
-                return { ...p, estimates: newEstimates };
-            }
-            return p;
-        });
+    const updateProjectField = async <K extends keyof Project>(field: K, value: Project[K]) => {
+        const updatedProjects = projects.map(p => p.id === project.id ? { ...p, [field]: value } : p);
         setProjects(updatedProjects);
         await api.saveData(userKey, 'projects', updatedProjects);
+    };
+
+    const handleUpdateEstimate = async (updatedEstimate: Estimate) => {
+        const newEstimates = project.estimates.map(e => e.id === updatedEstimate.id ? updatedEstimate : e);
+        await updateProjectField('estimates', newEstimates);
     };
 
     const handleAddEstimate = async () => {
@@ -1345,14 +1642,7 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
             items: [],
             discount: { type: 'percent', value: 0 },
         };
-        const updatedProjects = projects.map(p => {
-            if (p.id === project.id) {
-                return { ...p, estimates: [...p.estimates, newEstimate] };
-            }
-            return p;
-        });
-        setProjects(updatedProjects);
-        await api.saveData(userKey, 'projects', updatedProjects);
+        await updateProjectField('estimates', [...project.estimates, newEstimate]);
         addToast('Новая смета добавлена', 'success');
     };
 
@@ -1362,14 +1652,8 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
             return;
         }
         if (window.confirm('Вы уверены, что хотите удалить эту смету? Это действие нельзя отменить.')) {
-            const updatedProjects = projects.map(p => {
-                if (p.id === project.id) {
-                    return { ...p, estimates: p.estimates.filter(e => e.id !== estimateId) };
-                }
-                return p;
-            });
-            setProjects(updatedProjects);
-            await api.saveData(userKey, 'projects', updatedProjects);
+            const updatedEstimates = project.estimates.filter(e => e.id !== estimateId);
+            await updateProjectField('estimates', updatedEstimates);
             addToast('Смета удалена', 'success');
         }
     };
@@ -1407,8 +1691,10 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
                 </div>
             </div>
             <FinancialDashboard project={project} />
-            
-            {/* TODO: Add sections for Notes, Schedule, Documents */}
+
+            <ProjectNotes notes={project.notes || ''} onSave={(notes) => updateProjectField('notes', notes)} />
+            <ProjectSchedule schedule={project.schedule || []} onUpdate={(schedule) => updateProjectField('schedule', schedule)} />
+            <ProjectDocuments documents={project.documents || []} onUpdate={(documents) => updateProjectField('documents', documents)} />
 
             <div className="estimates-container">
                 {project.estimates.map(estimate => (
@@ -1724,6 +2010,62 @@ const PublicEstimateView = () => {
     const [project, setProject] = useState<Project | null | undefined>(undefined);
     const [estimate, setEstimate] = useState<Estimate | null | undefined>(undefined);
     const [isApproving, setIsApproving] = useState(false);
+    const [showCommentModal, setShowCommentModal] = useState(false);
+    const [commentingItem, setCommentingItem] = useState<EstimateItem | null>(null);
+
+    const openCommentModal = (item: EstimateItem) => {
+        setCommentingItem(item);
+        setShowCommentModal(true);
+    };
+
+    const handleAddComment = (itemId: string, commentText: string) => {
+        const newComment: Comment = {
+            id: generateId(),
+            author: 'Клиент',
+            text: commentText,
+            timestamp: new Date().toISOString()
+        };
+        
+        try {
+            const allProjects = _get<Project[]>('prorab_projects_all', []);
+            const updatedProjects = allProjects.map(p => {
+                if (p.id === projectId) {
+                    const updatedEstimates = p.estimates.map(e => {
+                        if (e.id === estimateId) {
+                            const updatedItems = e.items.map(item => {
+                                if (item.id === itemId) {
+                                    return { ...item, comments: [...(item.comments || []), newComment] };
+                                }
+                                return item;
+                            });
+                            return { ...e, items: updatedItems };
+                        }
+                        return e;
+                    });
+                    return { ...p, estimates: updatedEstimates };
+                }
+                return p;
+            });
+            _set('prorab_projects_all', updatedProjects);
+
+            // Update local state to reflect change immediately
+            setEstimate(prev => {
+                if (!prev) return null;
+                const updatedItems = prev.items.map(item => {
+                    if (item.id === itemId) {
+                         return { ...item, comments: [...(item.comments || []), newComment] };
+                    }
+                    return item;
+                });
+                return { ...prev, items: updatedItems };
+            });
+            
+        } catch(e) {
+            console.error("Error saving comment", e);
+            alert("Не удалось сохранить комментарий.");
+        }
+    };
+
 
     useEffect(() => {
         try {
@@ -1840,11 +2182,12 @@ const PublicEstimateView = () => {
                                 <th className="align-right">Кол-во</th>
                                 <th className="align-right">Цена</th>
                                 <th className="align-right">Итог</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             {estimate.items.length === 0 ? (
-                                <tr><td colSpan={4} style={{textAlign: 'center', padding: '1rem'}}>Позиций нет.</td></tr>
+                                <tr><td colSpan={5} style={{textAlign: 'center', padding: '1rem'}}>Позиций нет.</td></tr>
                             ) : (
                                 estimate.items.map(item => (
                                     <tr key={item.id}>
@@ -1856,6 +2199,12 @@ const PublicEstimateView = () => {
                                         <td className="align-right">{item.quantity} {item.unit}</td>
                                         <td className="align-right">{formatCurrency(item.price)}</td>
                                         <td className="align-right">{formatCurrency(item.quantity * item.price)}</td>
+                                        <td className="align-right">
+                                            <button className="action-btn comment-btn" onClick={() => openCommentModal(item)} aria-label="Комментарии">
+                                                <CommentIcon />
+                                                {(item.comments?.length || 0) > 0 && <span className="comment-badge">{item.comments?.length}</span>}
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))
                             )}
@@ -1891,6 +2240,40 @@ const PublicEstimateView = () => {
                      </div>
                  </div>
             </div>
+            
+            {(project.schedule && project.schedule.length > 0) && (
+                <div className="card">
+                    <h3>График работ</h3>
+                    <div className="schedule-list">
+                         {project.schedule.map(item => (
+                            <div key={item.id} className="schedule-item">
+                                <div className="schedule-item-info">
+                                    <strong>{item.name}</strong>
+                                    <span className="schedule-item-dates">
+                                        {new Date(item.startDate).toLocaleDateString()} - {item.endDate ? new Date(item.endDate).toLocaleDateString() : '...'}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+            
+            {(project.documents && project.documents.length > 0) && (
+                <div className="card">
+                    <h3>Документы</h3>
+                    <div className="document-list">
+                         {project.documents.map(doc => (
+                            <div key={doc.id} className="document-item">
+                                <div className="document-item-info">
+                                    <a href={doc.file} download={doc.fileName} target="_blank" rel="noopener noreferrer">{doc.name}</a>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
 
             {(project.photoReports && project.photoReports.length > 0) && (
                 <div className="card">
@@ -1931,6 +2314,13 @@ const PublicEstimateView = () => {
             <footer className="public-footer">
                 <p>Смета сформирована в <a href={window.location.origin} target="_blank" rel="noopener noreferrer">Прораб</a></p>
             </footer>
+            
+            <CommentModal
+                show={showCommentModal}
+                onClose={() => setShowCommentModal(false)}
+                item={commentingItem}
+                onAddComment={handleAddComment}
+            />
         </div>
     );
 };
@@ -2282,6 +2672,114 @@ const DirectoryView = ({ directory, setDirectory, userKey, onBack }: DirectoryVi
     );
 };
 
+interface InventoryViewProps {
+    inventory: InventoryItem[];
+    setInventory: Dispatch<SetStateAction<InventoryItem[]>>;
+    projects: Project[];
+    userKey: string;
+    onBack: () => void;
+}
+const InventoryView = ({ inventory, setInventory, projects, userKey, onBack }: InventoryViewProps) => {
+    const [showModal, setShowModal] = useState(false);
+    const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+    const [newItem, setNewItem] = useState<Omit<InventoryItem, 'id'>>({ name: '', location: 'На базе' });
+    const { addToast } = useToasts();
+    
+    const projectMap = useMemo(() => new Map(projects.map(p => [p.id, p.name])), [projects]);
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        let updatedInventory;
+        if (editingItem) {
+            updatedInventory = inventory.map(item => item.id === editingItem.id ? { ...item, ...newItem } : item);
+        } else {
+            updatedInventory = [...inventory, { ...newItem, id: generateId() }];
+        }
+        setInventory(updatedInventory);
+        await api.saveData(userKey, 'inventory', updatedInventory);
+        setShowModal(false);
+    };
+
+    const handleDelete = async (id: string) => {
+        if (window.confirm('Удалить этот инструмент из списка?')) {
+            const updatedInventory = inventory.filter(item => item.id !== id);
+            setInventory(updatedInventory);
+            await api.saveData(userKey, 'inventory', updatedInventory);
+            addToast('Инструмент удален', 'success');
+        }
+    };
+
+    const openModalForNew = () => {
+        setEditingItem(null);
+        setNewItem({ name: '', location: 'На базе' });
+        setShowModal(true);
+    };
+
+    const openModalForEdit = (item: InventoryItem) => {
+        setEditingItem(item);
+        setNewItem({ ...item });
+        setShowModal(true);
+    };
+
+    return (
+        <div className="animate-fade-slide-up">
+            <button onClick={onBack} className="back-button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 11H7.83L13.42 5.41L12 4L4 12L12 20L13.41 18.59L7.83 13H20V11Z" fill="currentColor"/></svg>
+                <span>К проектам</span>
+            </button>
+            <div className="card">
+                <div className="d-flex justify-between align-center mb-1">
+                    <h2>Инвентарь</h2>
+                    <button className="btn btn-primary" onClick={openModalForNew}>+ Добавить</button>
+                </div>
+                {inventory.length === 0 ? (
+                    <div className="empty-state">
+                        <p>Ваш список инструмента пуст.</p>
+                    </div>
+                ) : (
+                    <div className="inventory-list">
+                        {inventory.map(item => (
+                            <div key={item.id} className="inventory-item">
+                                <div className="inventory-item-info">
+                                    <strong>{item.name}</strong>
+                                    <span className="inventory-item-location">
+                                        {item.location === 'На базе' ? 'На базе' : `Объект: ${projectMap.get(item.location) || 'Неизвестно'}`}
+                                    </span>
+                                </div>
+                                <div className="item-actions">
+                                    <button className="action-btn" onClick={() => openModalForEdit(item)}><EditIcon /></button>
+                                    <button className="action-btn" onClick={() => handleDelete(item.id)}><DeleteIcon /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+            <Modal show={showModal} onClose={() => setShowModal(false)} title={editingItem ? 'Редактировать' : 'Новый инструмент'}>
+                <form onSubmit={handleSave}>
+                    <div className="form-group">
+                        <label>Название</label>
+                        <input type="text" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} required/>
+                    </div>
+                    <div className="form-group">
+                        <label>Местоположение</label>
+                        <select value={newItem.location} onChange={e => setNewItem({...newItem, location: e.target.value})}>
+                            <option value="На базе">На базе</option>
+                            {projects.filter(p => p.status === 'В работе').map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="form-actions">
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Отмена</button>
+                        <button type="submit" className="btn btn-primary">Сохранить</button>
+                    </div>
+                </form>
+            </Modal>
+        </div>
+    );
+};
+
 interface AppContentProps {
     currentUser: User;
     onLogout: () => void;
@@ -2392,8 +2890,13 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
                         onBack={() => handleViewChange('projects')}
                     />
                  ) : (
-                    // TODO: InventoryView
-                    <div>Inventory View</div>
+                    <InventoryView
+                        inventory={inventory}
+                        setInventory={setInventory}
+                        projects={projects}
+                        userKey={userKey}
+                        onBack={() => handleViewChange('projects')}
+                     />
                  )}
             </main>
 

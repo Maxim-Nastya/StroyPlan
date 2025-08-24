@@ -1,4 +1,4 @@
-const CACHE_NAME = 'prorab-cache-v2.2';
+const CACHE_NAME = 'prorab-cache-v2.3';
 const urlsToCache = [
   './',
   './index.html',

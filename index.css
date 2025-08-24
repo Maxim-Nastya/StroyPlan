@@ -1061,6 +1061,26 @@ tbody tr:hover {
 }
 
 /* 6.17 NEW: Comments */
+.comment-btn {
+    position: relative;
+}
+.comment-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background-color: hsl(var(--error));
+    color: white;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
 .comment-modal-body {
     display: flex;
     flex-direction: column;
