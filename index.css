@@ -334,6 +334,11 @@ main {
     transform: scale(1.1);
 }
 
+.action-btn[aria-label*="Удалить"]:hover {
+    color: hsl(var(--error));
+    background-color: hsl(var(--error) / 0.1);
+}
+
 .back-button {
     border-radius: var(--border-radius-full);
     gap: var(--space-2);
@@ -490,6 +495,14 @@ tbody tr:hover {
     background-color: hsl(var(--primary-hue) 30% 95%);
 }
 
+.item-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--space-1);
+    white-space: nowrap;
+}
+
 .transaction-list {
     margin-top: var(--space-4);
     display: flex;
@@ -593,6 +606,7 @@ tbody tr:hover {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    flex-shrink: 0;
 }
 
 .logo-upload-section { display: flex; align-items: center; gap: var(--space-6); }
@@ -945,6 +959,8 @@ tbody tr:hover {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-4);
     margin-bottom: var(--space-4);
     padding-bottom: var(--space-4);
     border-bottom: 1px solid hsl(var(--border));
@@ -958,6 +974,7 @@ tbody tr:hover {
     padding: var(--space-2);
     border-radius: var(--border-radius-sm);
     transition: var(--transition-smooth);
+    flex: 1 1 200px;
 }
 .estimate-name-input:focus {
     outline: none;
@@ -1035,9 +1052,6 @@ tbody tr:hover {
     right: var(--space-2);
     background-color: hsla(var(--text-primary), 0.5);
     color: hsl(var(--text-on-primary));
-}
-.photo-report-delete-btn:hover {
-    background-color: hsla(var(--error), 0.8);
 }
 
 .photo-reports-grid.public-view {

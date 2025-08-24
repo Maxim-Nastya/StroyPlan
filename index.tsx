@@ -573,6 +573,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                     onChange={(e) => setEstimateName(e.target.value)}
                     onBlur={handleNameChangeOnBlur}
                     className="estimate-name-input"
+                    aria-label="Название сметы"
                 />
                 <div className="card-header-actions">
                     <button className="btn btn-primary btn-sm" onClick={openModalForNew}>+ Добавить</button>
