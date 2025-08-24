@@ -83,6 +83,13 @@ interface Discount {
     value: number;
 }
 
+interface PhotoReport {
+    id: string;
+    date: string;
+    description: string;
+    image: string; // base64 data URL
+}
+
 interface Project {
     id: string;
     name: string;
@@ -95,6 +102,7 @@ interface Project {
     discount?: Discount;
     contractor?: UserProfile;
     estimateApprovedOn?: string;
+    photoReports?: PhotoReport[];
 }
 
 // --- HOOK FOR LOCALSTORAGE ---
@@ -159,7 +167,7 @@ const api: {
     login: (email: string, password: string) => Promise<User>;
     register: (email: string, password: string) => Promise<User>;
     getData: (userKey: string) => Promise<{ projects: Project[]; directory: DirectoryItem[]; profile: UserProfile; }>;
-    saveData: <T>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T) => Promise<void>;
+    saveData: <T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T) => Promise<void>;
 } = {
     async login(email: string, password: string): Promise<User> {
         await _delay();
@@ -213,7 +221,7 @@ const api: {
         return { projects, directory, profile };
     },
 
-    async saveData<T>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T): Promise<void> {
+    async saveData<T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T): Promise<void> {
         await _delay();
         _set(`prorab_${dataType}_${userKey}`, data);
     }
@@ -509,10 +517,10 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
                         </span>
                     )}
                 </div>
-                <div>
+                <div className="card-header-actions">
+                     <button className="btn btn-primary btn-sm" onClick={openModalForNew}>+ Добавить</button>
                      <button className="btn btn-secondary btn-sm" onClick={() => setShowShoppingListModal(true)}>Список покупок</button>
-                     <button className="btn btn-secondary btn-sm" onClick={handleShare} style={{marginLeft: '0.5rem'}}>Поделиться</button>
-                     <button className="btn btn-primary btn-sm" style={{marginLeft: '0.5rem'}} onClick={openModalForNew}>+ Добавить</button>
+                     <button className="btn btn-secondary btn-sm" onClick={handleShare}>Поделиться</button>
                 </div>
             </div>
             <div className="table-container">
@@ -829,6 +837,133 @@ const ExpenseTracker = ({ project, projects, setProjects, userKey }: ExpenseTrac
     );
 };
 
+interface PhotoReportsProps {
+    project: Project;
+    projects: Project[];
+    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    userKey: string;
+}
+const PhotoReports = ({ project, projects, setProjects, userKey }: PhotoReportsProps) => {
+    const [showModal, setShowModal] = useState(false);
+    const [newReport, setNewReport] = useState({ date: new Date().toISOString().split('T')[0], description: '' });
+    const [reportFile, setReportFile] = useState<File | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const { addToast } = useToasts();
+    
+    const photoReports = project.photoReports || [];
+
+    const handleAddReport = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!reportFile) {
+            addToast('Пожалуйста, выберите файл', 'error');
+            return;
+        }
+        setIsSaving(true);
+        try {
+            const imageDataUrl = await fileToBase64(reportFile);
+            const reportWithId: PhotoReport = {
+                ...newReport,
+                id: generateId(),
+                image: imageDataUrl,
+            };
+
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    const existingReports = p.photoReports || [];
+                    return { ...p, photoReports: [reportWithId, ...existingReports] };
+                }
+                return p;
+            });
+
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Фотоотчет добавлен', 'success');
+            setShowModal(false);
+            setNewReport({ date: new Date().toISOString().split('T')[0], description: '' });
+            setReportFile(null);
+        } catch (err) {
+            addToast('Не удалось добавить фотоотчет', 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteReport = async (reportId: string) => {
+        if (!window.confirm('Вы уверены, что хотите удалить этот фотоотчет?')) return;
+
+        try {
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    const updatedReports = (p.photoReports || []).filter(r => r.id !== reportId);
+                    return { ...p, photoReports: updatedReports };
+                }
+                return p;
+            });
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Фотоотчет удален', 'success');
+        } catch (err) {
+            addToast('Не удалось удалить фотоотчет', 'error');
+        }
+    };
+    
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            setReportFile(e.target.files[0]);
+        }
+    };
+
+    return (
+        <div className="card">
+            <div className="d-flex justify-between align-center mb-1">
+                <h3>Фотоотчеты</h3>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Добавить фото</button>
+            </div>
+            {photoReports.length === 0 ? (
+                <div className="transaction-list-empty">Фотоотчетов пока нет.</div>
+            ) : (
+                <div className="photo-reports-grid">
+                    {photoReports.map(report => (
+                        <div key={report.id} className="photo-report-card">
+                            <img src={report.image} alt={report.description} />
+                            <div className="photo-report-info">
+                                <p>{report.description}</p>
+                                <small>{new Date(report.date).toLocaleDateString('ru-RU')}</small>
+                            </div>
+                            <button className="photo-report-delete-btn action-btn" onClick={() => handleDeleteReport(report.id)} aria-label="Удалить фотоотчет">
+                                <DeleteIcon />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+            <Modal show={showModal} onClose={() => !isSaving && setShowModal(false)} title="Добавить фотоотчет">
+                <form onSubmit={handleAddReport}>
+                    <div className="form-group">
+                        <label>Фотография</label>
+                        <input type="file" accept="image/*" onChange={handleFileChange} required disabled={isSaving} />
+                    </div>
+                    <div className="form-group">
+                        <label>Описание</label>
+                        <input type="text" value={newReport.description} onChange={e => setNewReport({ ...newReport, description: e.target.value })} placeholder="Например, укладка плитки в ванной" required disabled={isSaving} />
+                    </div>
+                    <div className="form-group">
+                        <label>Дата</label>
+                        <input type="date" value={newReport.date} onChange={e => setNewReport({ ...newReport, date: e.target.value })} required disabled={isSaving} />
+                    </div>
+                    <div className="form-actions">
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={isSaving}>Отмена</button>
+                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                            {isSaving ? <Loader /> : 'Добавить'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+        </div>
+    );
+};
+
+
 interface ProjectEditModalProps {
     project: Project;
     projects: Project[];
@@ -958,6 +1093,7 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
             <FinancialDashboard project={project} />
             <EstimateEditor project={project} projects={projects} setProjects={setProjects} directory={directory} setDirectory={setDirectory} userKey={userKey} />
             <ExpenseTracker project={project} projects={projects} setProjects={setProjects} userKey={userKey}/>
+            <PhotoReports project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
 
             <ProjectEditModal project={project} projects={projects} show={isEditing} onClose={() => setIsEditing(false)} setProjects={setProjects} userKey={userKey}/>
         </div>
@@ -990,6 +1126,7 @@ const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfil
                 estimate: [],
                 expenses: [],
                 payments: [],
+                photoReports: [],
                 discount: { type: 'percent', value: 0 },
                 contractor: userProfile
             };
@@ -1364,6 +1501,23 @@ const PublicEstimateView = () => {
                      </div>
                  </div>
             </div>
+
+            {(project.photoReports && project.photoReports.length > 0) && (
+                <div className="card">
+                    <h3>Фотоотчет о ходе работ</h3>
+                    <div className="photo-reports-grid public-view">
+                        {(project.photoReports || []).map(report => (
+                            <div key={report.id} className="photo-report-card-public">
+                                <img src={report.image} alt={report.description} />
+                                <div className="photo-report-info-public">
+                                    <p>{report.description}</p>
+                                    <small>{new Date(report.date).toLocaleDateString('ru-RU')}</small>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
              <div className="card approval-section">
                 {project.estimateApprovedOn ? (
