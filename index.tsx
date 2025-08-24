@@ -224,8 +224,8 @@ const _delay = (ms = 500) => {
 const api: {
     login: (email: string, password: string) => Promise<User>;
     register: (email: string, password: string) => Promise<User>;
-    getData: (userKey: string) => Promise<{ projects: Project[]; directory: DirectoryItem[]; profile: UserProfile; templates: EstimateTemplate[]; inventory: InventoryItem[]; }>;
-    saveData: <T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory', data: T) => Promise<void>;
+    getData: (userKey: string) => Promise<{ projects: Project[]; directory: DirectoryItem[]; profile: UserProfile; templates: EstimateTemplate[]; inventory: InventoryItem[]; inventoryNotes: ProjectNote[]; }>;
+    saveData: <T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory' | 'inventory_notes', data: T) => Promise<void>;
 } = {
     async login(email: string, password: string): Promise<User> {
         await _delay();
@@ -248,13 +248,14 @@ const api: {
         return { email: newUser.email };
     },
 
-    async getData(userKey: string): Promise<{ projects: Project[], directory: DirectoryItem[], profile: UserProfile, templates: EstimateTemplate[], inventory: InventoryItem[] }> {
+    async getData(userKey: string): Promise<{ projects: Project[], directory: DirectoryItem[], profile: UserProfile, templates: EstimateTemplate[], inventory: InventoryItem[], inventoryNotes: ProjectNote[] }> {
         await _delay(800);
         let projects = _get<Project[]>(`prorab_projects_${userKey}`, []);
         let directory = _get<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
         const profile = _get<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
         const templates = _get<EstimateTemplate[]>(`prorab_templates_${userKey}`, []);
         const inventory = _get<InventoryItem[]>(`prorab_inventory_${userKey}`, []);
+        const inventoryNotes = _get<ProjectNote[]>(`prorab_inventory_notes_${userKey}`, []);
         
         // --- Data Migration for Directory Items without IDs ---
         let directoryNeedsUpdate = false;
@@ -339,10 +340,10 @@ const api: {
             return { ...p, estimates: syncedEstimates };
         });
 
-        return { projects, directory, profile, templates, inventory };
+        return { projects, directory, profile, templates, inventory, inventoryNotes };
     },
 
-    async saveData<T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory', data: T): Promise<void> {
+    async saveData<T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory' | 'inventory_notes', data: T): Promise<void> {
         await _delay();
         _set(`prorab_${dataType}_${userKey}`, data);
     }
@@ -1391,11 +1392,12 @@ const ActGenerationModal = ({ show, onClose, project }: ActGenerationModalProps)
 };
 
 
-interface ProjectNotesProps {
+interface NotesComponentProps {
     notes: ProjectNote[];
     onUpdate: (notes: ProjectNote[]) => void;
+    title: string;
 }
-const ProjectNotes = ({ notes, onUpdate }: ProjectNotesProps) => {
+const NotesComponent = ({ notes, onUpdate, title }: NotesComponentProps) => {
     const [newNoteText, setNewNoteText] = useState('');
     const [editingNote, setEditingNote] = useState<ProjectNote | null>(null);
     const [editedText, setEditedText] = useState('');
@@ -1441,7 +1443,7 @@ const ProjectNotes = ({ notes, onUpdate }: ProjectNotesProps) => {
 
     return (
         <div className="card">
-            <h3>Заметки по проекту</h3>
+            <h3>{title}</h3>
             {notes.length === 0 ? (
                 <div className="transaction-list-empty">Заметок пока нет.</div>
             ) : (
@@ -1778,7 +1780,7 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
             </div>
             <FinancialDashboard project={project} />
 
-            <ProjectNotes notes={project.notes || []} onUpdate={(notes) => updateProjectField('notes', notes)} />
+            <NotesComponent title="Заметки по проекту" notes={project.notes || []} onUpdate={(notes) => updateProjectField('notes', notes)} />
             <ProjectSchedule schedule={project.schedule || []} onUpdate={(schedule) => updateProjectField('schedule', schedule)} />
             <ProjectDocuments documents={project.documents || []} onUpdate={(documents) => updateProjectField('documents', documents)} />
 
@@ -2764,8 +2766,10 @@ interface InventoryViewProps {
     projects: Project[];
     userKey: string;
     onBack: () => void;
+    inventoryNotes: ProjectNote[];
+    setInventoryNotes: Dispatch<SetStateAction<ProjectNote[]>>;
 }
-const InventoryView = ({ inventory, setInventory, projects, userKey, onBack }: InventoryViewProps) => {
+const InventoryView = ({ inventory, setInventory, projects, userKey, onBack, inventoryNotes, setInventoryNotes }: InventoryViewProps) => {
     const [showModal, setShowModal] = useState(false);
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [newItem, setNewItem] = useState<Omit<InventoryItem, 'id'>>({ name: '', location: 'На базе' });
@@ -2807,6 +2811,11 @@ const InventoryView = ({ inventory, setInventory, projects, userKey, onBack }: I
         setShowModal(true);
     };
 
+    const handleNotesUpdate = async (notes: ProjectNote[]) => {
+        setInventoryNotes(notes);
+        await api.saveData(userKey, 'inventory_notes', notes);
+    };
+
     return (
         <div className="animate-fade-slide-up">
             <button onClick={onBack} className="back-button">
@@ -2841,6 +2850,7 @@ const InventoryView = ({ inventory, setInventory, projects, userKey, onBack }: I
                     </div>
                 )}
             </div>
+            <NotesComponent title="Заметки по инвентарю" notes={inventoryNotes} onUpdate={handleNotesUpdate} />
             <Modal show={showModal} onClose={() => setShowModal(false)} title={editingItem ? 'Редактировать' : 'Новый инструмент'}>
                 <form onSubmit={handleSave}>
                     <div className="form-group">
@@ -2877,6 +2887,7 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
     const [userProfile, setUserProfile] = useState<UserProfile>({ companyName: '', contactName: userKey, phone: '', logo: '' });
     const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
     const [inventory, setInventory] = useState<InventoryItem[]>([]);
+    const [inventoryNotes, setInventoryNotes] = useState<ProjectNote[]>([]);
     
     const [isLoading, setIsLoading] = useState(true);
     const [currentView, setCurrentView] = useState<'projects' | 'reports' | 'directory' | 'inventory'>('projects');
@@ -2888,12 +2899,13 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
     useEffect(() => {
         const loadInitialData = async () => {
             try {
-                const { projects, directory, profile, templates, inventory } = await api.getData(userKey);
+                const { projects, directory, profile, templates, inventory, inventoryNotes } = await api.getData(userKey);
                 setProjects(projects);
                 setDirectory(directory);
                 setUserProfile(profile);
                 setTemplates(templates);
                 setInventory(inventory);
+                setInventoryNotes(inventoryNotes);
             } catch (e) {
                 addToast('Не удалось загрузить данные', 'error');
             } finally {
@@ -2982,6 +2994,8 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
                         projects={projects}
                         userKey={userKey}
                         onBack={() => handleViewChange('projects')}
+                        inventoryNotes={inventoryNotes}
+                        setInventoryNotes={setInventoryNotes}
                      />
                  )}
             </main>
