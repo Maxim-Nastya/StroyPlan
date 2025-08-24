@@ -60,6 +60,14 @@ interface EstimateItem {
     price: number;
 }
 
+interface Estimate {
+    id: string;
+    name: string;
+    items: EstimateItem[];
+    discount?: Discount;
+    approvedOn?: string;
+}
+
 interface DirectoryItem {
     id: string;
     name: string;
@@ -100,12 +108,10 @@ interface Project {
     address: string;
     status: 'В работе' | 'Завершен';
     client: Client;
-    estimate: EstimateItem[];
+    estimates: Estimate[];
     expenses: Expense[];
     payments: Payment[];
-    discount?: Discount;
     contractor?: UserProfile;
-    estimateApprovedOn?: string;
     photoReports?: PhotoReport[];
 }
 
@@ -196,7 +202,7 @@ const api: {
 
     async getData(userKey: string): Promise<{ projects: Project[], directory: DirectoryItem[], profile: UserProfile }> {
         await _delay(800);
-        const projects = _get<Project[]>(`prorab_projects_${userKey}`, []);
+        let projects = _get<Project[]>(`prorab_projects_${userKey}`, []);
         let directory = _get<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
         const profile = _get<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
         
@@ -210,11 +216,41 @@ const api: {
             }
             return item;
         });
-
         if (directoryNeedsUpdate) {
             _set(`prorab_directory_${userKey}`, directory);
         }
-        // --- End Migration ---
+
+        // --- Data Migration for multiple estimates ---
+        let projectsNeedUpdate = false;
+        projects = projects.map(p => {
+            // @ts-ignore - check for old structure
+            if (p.estimate) {
+                projectsNeedUpdate = true;
+                const newEstimate: Estimate = {
+                    id: generateId(),
+                    name: 'Основная смета',
+                    // @ts-ignore
+                    items: p.estimate,
+                    // @ts-ignore
+                    discount: p.discount,
+                    // @ts-ignore
+                    approvedOn: p.estimateApprovedOn
+                };
+                const newProject = { ...p, estimates: [newEstimate] };
+                // @ts-ignore
+                delete newProject.estimate;
+                // @ts-ignore
+                delete newProject.discount;
+                // @ts-ignore
+                delete newProject.estimateApprovedOn;
+                return newProject as Project;
+            }
+            return p;
+        });
+
+        if (projectsNeedUpdate) {
+            _set(`prorab_projects_${userKey}`, projects);
+        }
 
         // This is a workaround for sharing data to the public view
         const allProjects = Object.keys(localStorage)
@@ -304,15 +340,25 @@ interface FinancialDashboardProps {
 }
 const FinancialDashboard = ({ project }: FinancialDashboardProps) => {
     const totals = useMemo(() => {
-        const subtotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
-        const discountAmount = project.discount
-            ? (project.discount.type === 'percent' ? subtotal * (project.discount.value / 100) : project.discount.value)
-            : 0;
-        const estimateTotal = subtotal - discountAmount;
+        const projectSubtotal = project.estimates.reduce((projectSum, estimate) => {
+            const estimateSubtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+            return projectSum + estimateSubtotal;
+        }, 0);
+
+        const projectDiscountAmount = project.estimates.reduce((projectSum, estimate) => {
+            const estimateSubtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+            const discountAmount = estimate.discount
+                ? (estimate.discount.type === 'percent' ? estimateSubtotal * (estimate.discount.value / 100) : estimate.discount.value)
+                : 0;
+            return projectSum + discountAmount;
+        }, 0);
+
+        const estimateTotal = projectSubtotal - projectDiscountAmount;
         
-        const materialCosts = project.estimate
+        const materialCosts = project.estimates.flatMap(e => e.items)
             .filter(item => item.type === 'Материал')
             .reduce((sum, item) => sum + item.quantity * item.price, 0);
+            
         const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
         const totalPaid = project.payments.reduce((sum, payment) => sum + payment.amount, 0);
         const profit = estimateTotal - materialCosts - expensesTotal;
@@ -347,14 +393,15 @@ const FinancialDashboard = ({ project }: FinancialDashboardProps) => {
 };
 
 interface EstimateEditorProps {
-    project: Project;
-    projects: Project[];
-    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    estimate: Estimate;
+    projectId: string;
+    onUpdate: (updatedEstimate: Estimate) => Promise<void>;
+    onDelete: (estimateId: string) => Promise<void>;
     directory: DirectoryItem[];
     setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
     userKey: string;
 }
-const EstimateEditor = ({ project, projects, setProjects, directory, setDirectory, userKey }: EstimateEditorProps) => {
+const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, setDirectory, userKey }: EstimateEditorProps) => {
     const [showModal, setShowModal] = useState(false);
     const [showShoppingListModal, setShowShoppingListModal] = useState(false);
     const [editingItem, setEditingItem] = useState<EstimateItem | null>(null);
@@ -363,17 +410,19 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
     const [isSaving, setIsSaving] = useState(false);
     const { addToast } = useToasts();
     
-    const [discountType, setDiscountType] = useState<'percent' | 'fixed'>(project.discount?.type || 'percent');
-    const [discountValue, setDiscountValue] = useState<number>(project.discount?.value || 0);
+    const [discountType, setDiscountType] = useState<'percent' | 'fixed'>(estimate.discount?.type || 'percent');
+    const [discountValue, setDiscountValue] = useState<number>(estimate.discount?.value || 0);
+    const [estimateName, setEstimateName] = useState(estimate.name);
 
     useEffect(() => {
-        setDiscountType(project.discount?.type || 'percent');
-        setDiscountValue(project.discount?.value || 0);
-    }, [project]);
+        setDiscountType(estimate.discount?.type || 'percent');
+        setDiscountValue(estimate.discount?.value || 0);
+        setEstimateName(estimate.name);
+    }, [estimate]);
 
     const isEditing = editingItem !== null;
 
-    const subtotal = useMemo(() => project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0), [project.estimate]);
+    const subtotal = useMemo(() => estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0), [estimate.items]);
     const discountAmount = useMemo(() => {
         if (discountType === 'percent') {
             return subtotal * (discountValue / 100);
@@ -383,10 +432,10 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
     const total = subtotal - discountAmount;
 
     const shoppingList = useMemo(() => {
-        return project.estimate
+        return estimate.items
             .filter(item => item.type === 'Материал')
             .map(item => ({ name: item.name, quantity: item.quantity, unit: item.unit }));
-    }, [project.estimate]);
+    }, [estimate.items]);
 
     const handleCopyShoppingList = () => {
         if (shoppingList.length === 0) return;
@@ -426,16 +475,14 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
         if (!trimmedName) return;
         setIsSaving(true);
         try {
+            let updatedItems;
             if (isEditing && editingItem) { // Update existing item
-                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, estimate: p.estimate.map(item => item.id === editingItem.id ? { ...item, ...newItem, name: trimmedName } : item) } : p);
-                setProjects(updatedProjects);
-                await api.saveData(userKey, 'projects', updatedProjects);
+                updatedItems = estimate.items.map(item => item.id === editingItem.id ? { ...item, ...newItem, name: trimmedName } : item);
             } else { // Add new item
                 const itemWithId: EstimateItem = { ...newItem, name: trimmedName, id: generateId() };
-                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, estimate: [...p.estimate, itemWithId] } : p);
-                setProjects(updatedProjects);
-                await api.saveData(userKey, 'projects', updatedProjects);
+                updatedItems = [...estimate.items, itemWithId];
             }
+            await onUpdate({ ...estimate, items: updatedItems });
             
             const isInDirectory = directory.some(dirItem => dirItem.name.toLowerCase() === trimmedName.toLowerCase());
             if (!isInDirectory) {
@@ -456,9 +503,8 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
     const handleDeleteItem = async (itemId: string) => {
         if (window.confirm('Вы уверены, что хотите удалить эту позицию?')) {
             try {
-                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, estimate: p.estimate.filter(item => item.id !== itemId) } : p);
-                setProjects(updatedProjects);
-                await api.saveData(userKey, 'projects', updatedProjects);
+                const updatedItems = estimate.items.filter(item => item.id !== itemId);
+                await onUpdate({ ...estimate, items: updatedItems });
                 addToast('Позиция удалена', 'success');
             } catch (e) {
                 addToast('Не удалось удалить', 'error');
@@ -469,23 +515,32 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
     const handleDiscountChange = async (type: 'percent' | 'fixed', value: number) => {
         try {
             const newDiscount: Discount = { type, value };
-            const updatedProjects = projects.map(p => p.id === project.id ? { ...p, discount: newDiscount } : p);
-            setProjects(updatedProjects);
-            await api.saveData(userKey, 'projects', updatedProjects);
+            await onUpdate({ ...estimate, discount: newDiscount });
             addToast('Скидка применена', 'success');
         } catch (e) {
             addToast('Не удалось применить скидку', 'error');
         }
     };
 
+    const handleNameChangeOnBlur = async () => {
+        if (estimateName.trim() && estimateName !== estimate.name) {
+            try {
+                await onUpdate({ ...estimate, name: estimateName.trim() });
+                addToast('Название сметы обновлено', 'success');
+            } catch (e) {
+                 addToast('Не удалось обновить название', 'error');
+            }
+        }
+    };
+
     const handleShare = () => {
-        const estimateLink = `${window.location.origin}${window.location.pathname}?view=estimate&projectId=${project.id}`;
+        const estimateLink = `${window.location.origin}${window.location.pathname}?view=estimate&projectId=${projectId}&estimateId=${estimate.id}`;
         navigator.clipboard.writeText(estimateLink).then(() => {
             addToast('Ссылка на смету скопирована!', 'success');
         });
     };
 
-    const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleNameInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setNewItem({ ...newItem, name: value });
         if (value.trim().length > 1) {
@@ -511,22 +566,27 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
     
     return (
         <div className="card">
-            <div className="d-flex justify-between align-center mb-1">
-                <div className="estimate-header">
-                    <h3>Смета</h3>
-                    {project.estimateApprovedOn && (
-                        <span className="approval-badge">
-                            <CheckIcon />
-                            Согласована клиентом {new Date(project.estimateApprovedOn).toLocaleDateString('ru-RU')}
-                        </span>
-                    )}
-                </div>
+            <div className="estimate-card-header">
+                <input 
+                    type="text" 
+                    value={estimateName} 
+                    onChange={(e) => setEstimateName(e.target.value)}
+                    onBlur={handleNameChangeOnBlur}
+                    className="estimate-name-input"
+                />
                 <div className="card-header-actions">
                     <button className="btn btn-primary btn-sm" onClick={openModalForNew}>+ Добавить</button>
                     <button className="action-btn" onClick={() => setShowShoppingListModal(true)} aria-label="Список покупок"><ShoppingListIcon /></button>
                     <button className="action-btn" onClick={handleShare} aria-label="Поделиться"><ShareIcon /></button>
+                    <button className="action-btn" onClick={() => onDelete(estimate.id)} aria-label="Удалить смету"><DeleteIcon /></button>
                 </div>
             </div>
+             {estimate.approvedOn && (
+                <span className="approval-badge">
+                    <CheckIcon />
+                    Согласована клиентом {new Date(estimate.approvedOn).toLocaleDateString('ru-RU')}
+                </span>
+            )}
             <div className="table-container">
                 <table>
                     <thead>
@@ -539,10 +599,10 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
                         </tr>
                     </thead>
                     <tbody>
-                        {project.estimate.length === 0 ? (
+                        {estimate.items.length === 0 ? (
                             <tr><td colSpan={5} style={{textAlign: 'center', padding: '1rem'}}>Позиций пока нет.</td></tr>
                         ) : (
-                            project.estimate.map((item, index) => (
+                            estimate.items.map((item, index) => (
                                 <tr key={item.id} className="animate-fade-slide-up" style={{ animationDelay: `${index * 50}ms` }}>
                                     <td>
                                         <strong>{item.name}</strong>
@@ -606,7 +666,7 @@ const EstimateEditor = ({ project, projects, setProjects, directory, setDirector
                 <form onSubmit={(e: React.FormEvent) => { e.preventDefault(); handleSaveItem(); }}>
                     <div className="form-group-inline autocomplete-container">
                         <label>Наименование</label>
-                        <input type="text" value={newItem.name} onChange={handleNameChange} required autoComplete="off" disabled={isSaving}/>
+                        <input type="text" value={newItem.name} onChange={handleNameInputChange} required autoComplete="off" disabled={isSaving}/>
                         {suggestions.length > 0 && (
                             <div className="autocomplete-suggestions">
                                 {suggestions.map(suggestion => (
@@ -1060,9 +1120,11 @@ const ActGenerationModal = ({ show, onClose, project }: ActGenerationModalProps)
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
-            const subtotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
-            const discountAmount = project.discount ? (project.discount.type === 'percent' ? subtotal * (project.discount.value / 100) : project.discount.value) : 0;
-            const total = subtotal - discountAmount;
+            const total = project.estimates.reduce((projectSum, estimate) => {
+                const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+                const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
+                return projectSum + (subtotal - discountAmount);
+            }, 0);
 
             const prompt = `
                 Составь официальный документ "Акт сдачи-приемки выполненных работ".
@@ -1171,6 +1233,55 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
             }
         }
     };
+    
+    const handleUpdateEstimate = async (updatedEstimate: Estimate) => {
+        const updatedProjects = projects.map(p => {
+            if (p.id === project.id) {
+                const newEstimates = p.estimates.map(e => e.id === updatedEstimate.id ? updatedEstimate : e);
+                return { ...p, estimates: newEstimates };
+            }
+            return p;
+        });
+        setProjects(updatedProjects);
+        await api.saveData(userKey, 'projects', updatedProjects);
+    };
+
+    const handleAddEstimate = async () => {
+        const newEstimateName = `Доп. смета #${project.estimates.length + 1}`;
+        const newEstimate: Estimate = {
+            id: generateId(),
+            name: newEstimateName,
+            items: [],
+            discount: { type: 'percent', value: 0 },
+        };
+        const updatedProjects = projects.map(p => {
+            if (p.id === project.id) {
+                return { ...p, estimates: [...p.estimates, newEstimate] };
+            }
+            return p;
+        });
+        setProjects(updatedProjects);
+        await api.saveData(userKey, 'projects', updatedProjects);
+        addToast('Новая смета добавлена', 'success');
+    };
+
+    const handleDeleteEstimate = async (estimateId: string) => {
+        if (project.estimates.length <= 1) {
+            addToast('Нельзя удалить последнюю смету', 'error');
+            return;
+        }
+        if (window.confirm('Вы уверены, что хотите удалить эту смету? Это действие нельзя отменить.')) {
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    return { ...p, estimates: p.estimates.filter(e => e.id !== estimateId) };
+                }
+                return p;
+            });
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Смета удалена', 'success');
+        }
+    };
 
     return (
         <div className="animate-fade-slide-up">
@@ -1198,7 +1309,26 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
                 </div>
             </div>
             <FinancialDashboard project={project} />
-            <EstimateEditor project={project} projects={projects} setProjects={setProjects} directory={directory} setDirectory={setDirectory} userKey={userKey} />
+            
+            <div className="estimates-container">
+                {project.estimates.map(estimate => (
+                    <EstimateEditor
+                        key={estimate.id}
+                        estimate={estimate}
+                        projectId={project.id}
+                        onUpdate={handleUpdateEstimate}
+                        onDelete={handleDeleteEstimate}
+                        directory={directory}
+                        setDirectory={setDirectory}
+                        userKey={userKey}
+                    />
+                ))}
+            </div>
+
+            <div className="d-flex" style={{justifyContent: 'center', marginTop: 'var(--space-6)'}}>
+                 <button className="btn btn-secondary" onClick={handleAddEstimate}>+ Создать смету</button>
+            </div>
+
             <ExpenseTracker project={project} projects={projects} setProjects={setProjects} userKey={userKey}/>
             <PhotoReports project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
 
@@ -1231,11 +1361,15 @@ const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfil
                 address: newProject.address,
                 status: 'В работе',
                 client: { name: newProject.clientName, phone: newProject.clientPhone },
-                estimate: [],
+                estimates: [{
+                    id: generateId(),
+                    name: 'Основная смета',
+                    items: [],
+                    discount: { type: 'percent', value: 0 }
+                }],
                 expenses: [],
                 payments: [],
                 photoReports: [],
-                discount: { type: 'percent', value: 0 },
                 contractor: userProfile
             };
             const updatedProjects = [project, ...projects];
@@ -1455,46 +1589,61 @@ const ProjectList = ({ projects, onSelectProject, onNewProject }: ProjectListPro
 const PublicEstimateView = () => {
     const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
     const projectId = urlParams.get('projectId');
+    const estimateId = urlParams.get('estimateId');
+
     const [project, setProject] = useState<Project | null | undefined>(undefined);
+    const [estimate, setEstimate] = useState<Estimate | null | undefined>(undefined);
     const [isApproving, setIsApproving] = useState(false);
 
     useEffect(() => {
         try {
             const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]') as Project[];
             const foundProject = allProjects.find(p => p.id === projectId);
-            setProject(foundProject || null);
+            if (foundProject) {
+                const foundEstimate = foundProject.estimates.find(e => e.id === estimateId);
+                setProject(foundProject);
+                setEstimate(foundEstimate || null);
+            } else {
+                 setProject(null);
+                 setEstimate(null);
+            }
         } catch (e) {
             setProject(null);
+            setEstimate(null);
         }
-    }, [projectId]);
+    }, [projectId, estimateId]);
 
     const handleApprove = () => {
-        if (!project || !window.confirm('Вы уверены, что хотите согласовать эту смету? Это действие нельзя отменить.')) return;
+        if (!project || !estimate || !window.confirm('Вы уверены, что хотите согласовать эту смету? Это действие нельзя отменить.')) return;
 
         setIsApproving(true);
         const approvalDate = new Date().toISOString();
 
         try {
-            // Simulate async operation
             setTimeout(() => {
-                // Update the project in the "all projects" cache
-                const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]') as Project[];
-                const updatedAllProjects = allProjects.map(p => p.id === projectId ? { ...p, estimateApprovedOn: approvalDate } : p);
-                localStorage.setItem('prorab_projects_all', JSON.stringify(updatedAllProjects));
+                const updateInStorage = (key: string) => {
+                    const storedProjects = JSON.parse(localStorage.getItem(key) || '[]') as Project[];
+                    const updatedProjects = storedProjects.map(p => {
+                        if (p.id === projectId) {
+                            const updatedEstimates = p.estimates.map(e => e.id === estimateId ? { ...e, approvedOn: approvalDate } : e);
+                            return { ...p, estimates: updatedEstimates };
+                        }
+                        return p;
+                    });
+                    localStorage.setItem(key, JSON.stringify(updatedProjects));
+                };
 
-                // Find and update the project in its original user-specific storage
+                updateInStorage('prorab_projects_all');
+
                 const projectKeys = Object.keys(localStorage).filter(k => k.startsWith('prorab_projects_') && k !== 'prorab_projects_all');
                 for (const key of projectKeys) {
-                    const userProjects = JSON.parse(localStorage.getItem(key) || '[]') as Project[];
-                    const projectIndex = userProjects.findIndex(p => p.id === projectId);
-                    if (projectIndex > -1) {
-                        userProjects[projectIndex].estimateApprovedOn = approvalDate;
-                        localStorage.setItem(key, JSON.stringify(userProjects));
-                        break; // Assume project ID is unique across all users
-                    }
+                   if (JSON.parse(localStorage.getItem(key) || '[]').some((p: Project) => p.id === projectId)) {
+                        updateInStorage(key);
+                        break;
+                   }
                 }
                 
-                setProject(prev => prev ? { ...prev, estimateApprovedOn: approvalDate } : null);
+                setEstimate(prev => prev ? { ...prev, approvedOn: approvalDate } : null);
                 setIsApproving(false);
             }, 700);
         } catch (e) {
@@ -1505,29 +1654,29 @@ const PublicEstimateView = () => {
     };
 
 
-    if (project === undefined) {
+    if (project === undefined || estimate === undefined) {
         return <Loader fullScreen />;
     }
 
-    if (!project) {
+    if (!project || !estimate) {
         return <div className="loader-overlay"><div style={{color: 'hsl(var(--text-primary))'}}>Смета не найдена или ссылка некорректна.</div></div>;
     }
 
-    const subtotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
-    const discountAmount = project.discount
-        ? (project.discount.type === 'percent' ? subtotal * (project.discount.value / 100) : project.discount.value)
+    const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+    const discountAmount = estimate.discount
+        ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value)
         : 0;
     const total = subtotal - discountAmount;
     
     const totalsByType = {
-        work: project.estimate.filter(i => i.type === 'Работа').reduce((sum, item) => sum + item.quantity * item.price, 0),
-        material: project.estimate.filter(i => i.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0),
+        work: estimate.items.filter(i => i.type === 'Работа').reduce((sum, item) => sum + item.quantity * item.price, 0),
+        material: estimate.items.filter(i => i.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0),
     };
     
     return (
         <div className="public-estimate-container">
             <header className="public-header">
-                <h1>Смета по объекту</h1>
+                <h1>{estimate.name}</h1>
                 <button className="btn btn-primary print-button" onClick={() => window.print()}>
                     <PrintIcon />
                     <span>Печать / Сохранить в PDF</span>
@@ -1564,10 +1713,10 @@ const PublicEstimateView = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {project.estimate.length === 0 ? (
+                            {estimate.items.length === 0 ? (
                                 <tr><td colSpan={4} style={{textAlign: 'center', padding: '1rem'}}>Позиций нет.</td></tr>
                             ) : (
-                                project.estimate.map(item => (
+                                estimate.items.map(item => (
                                     <tr key={item.id}>
                                         <td>
                                             <strong>{item.name}</strong>
@@ -1600,9 +1749,9 @@ const PublicEstimateView = () => {
                          <span>Подытог</span>
                          <span>{formatCurrency(subtotal)}</span>
                      </div>
-                     {discountAmount > 0 && project.discount && (
+                     {discountAmount > 0 && estimate.discount && (
                          <div className="total-row discount-row">
-                             <span>Скидка ({project.discount.type === 'percent' ? `${project.discount.value}%` : formatCurrency(project.discount.value)})</span>
+                             <span>Скидка ({estimate.discount.type === 'percent' ? `${estimate.discount.value}%` : formatCurrency(estimate.discount.value)})</span>
                              <span>- {formatCurrency(discountAmount)}</span>
                          </div>
                      )}
@@ -1631,12 +1780,12 @@ const PublicEstimateView = () => {
             )}
 
              <div className="card approval-section">
-                {project.estimateApprovedOn ? (
+                {estimate.approvedOn ? (
                     <div className="approval-status approved">
                         <CheckIcon />
                         <div>
                             <strong>Смета согласована</strong>
-                            <p>Дата: {new Date(project.estimateApprovedOn).toLocaleDateString('ru-RU')}</p>
+                            <p>Дата: {new Date(estimate.approvedOn).toLocaleDateString('ru-RU')}</p>
                         </div>
                     </div>
                 ) : (
@@ -1736,16 +1885,17 @@ const ReportsView = ({ projects, onBack }: ReportsViewProps) => {
         let totalProfit = 0;
 
         projects.forEach(project => {
-            const subtotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
-            const discountAmount = project.discount
-                ? (project.discount.type === 'percent' ? subtotal * (project.discount.value / 100) : project.discount.value)
-                : 0;
-            const estimateTotal = subtotal - discountAmount;
-            const materialCosts = project.estimate.filter(item => item.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0);
-            const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
-            const profit = estimateTotal - materialCosts - expensesTotal;
+            const projectRevenue = project.estimates.reduce((projectSum, estimate) => {
+                const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+                const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
+                return projectSum + (subtotal - discountAmount);
+            }, 0);
 
-            totalRevenue += estimateTotal;
+            const materialCosts = project.estimates.flatMap(e => e.items).filter(item => item.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0);
+            const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
+            const profit = projectRevenue - materialCosts - expensesTotal;
+
+            totalRevenue += projectRevenue;
             totalExpenses += expensesTotal;
             totalProfit += profit;
         });
@@ -1755,13 +1905,16 @@ const ReportsView = ({ projects, onBack }: ReportsViewProps) => {
 
     const handleExportCsv = () => {
         try {
-            const headers = ['Название проекта', 'Клиент', 'Статус', 'Сумма сметы', 'Расходы', 'Оплачено', 'Прибыль'];
+            const headers = ['Название проекта', 'Клиент', 'Статус', 'Сумма смет', 'Расходы', 'Оплачено', 'Прибыль'];
             
             const rows = projects.map(project => {
-                const subtotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
-                const discountAmount = project.discount ? (project.discount.type === 'percent' ? subtotal * (project.discount.value / 100) : project.discount.value) : 0;
-                const estimateTotal = subtotal - discountAmount;
-                const materialCosts = project.estimate.filter(item => item.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0);
+                const estimateTotal = project.estimates.reduce((projectSum, estimate) => {
+                    const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+                    const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
+                    return projectSum + (subtotal - discountAmount);
+                }, 0);
+
+                const materialCosts = project.estimates.flatMap(e => e.items).filter(item => item.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0);
                 const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
                 const totalPaid = project.payments.reduce((sum, payment) => sum + payment.amount, 0);
                 const profit = estimateTotal - materialCosts - expensesTotal;
@@ -2148,12 +2301,11 @@ const App = () => {
     // --- Routing Logic ---
     const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
     const view = urlParams.get('view');
-    const publicProjectId = urlParams.get('projectId');
 
     const AppWrapper = (
         <ToastProvider>
             {(() => {
-                if (view === 'estimate' && publicProjectId) {
+                if (view === 'estimate') {
                     return <PublicEstimateView />;
                 }
 
