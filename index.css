@@ -1,3 +1,4 @@
+
 /* 1. Design System: Foundation */
 :root {
     /* Semantic Color Palette (HSL) */
@@ -143,6 +144,12 @@ header h1 {
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .app-container {
@@ -536,6 +543,66 @@ tbody tr:hover {
 .suggestion-item:hover { background-color: hsl(var(--surface-muted)); }
 .suggestion-name { font-weight: 500; }
 .suggestion-details { font-size: var(--text-sm); color: hsl(var(--text-secondary)); }
+
+/* Authentication Screen */
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: var(--space-4);
+    flex-grow: 1;
+}
+.auth-card {
+    width: 100%;
+    max-width: 400px;
+    background-color: var(--surface);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-elegant);
+    padding: var(--space-8);
+}
+.auth-header {
+    text-align: center;
+    margin-bottom: var(--space-6);
+}
+.auth-header h1 {
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: var(--space-2);
+}
+.auth-error {
+    background-color: hsl(var(--error) / 0.1);
+    color: hsl(var(--error));
+    padding: var(--space-3);
+    border-radius: var(--border-radius-sm);
+    text-align: center;
+    margin-bottom: var(--space-4);
+    font-size: var(--text-sm);
+}
+.form-group-icon {
+    position: relative;
+    margin-bottom: var(--space-4);
+}
+.form-group-icon svg {
+    position: absolute;
+    left: var(--space-4);
+    top: 50%;
+    transform: translateY(-50%);
+    color: hsl(var(--text-secondary));
+    pointer-events: none;
+}
+.form-group-icon input {
+    padding-left: calc(var(--space-4) * 2 + 20px); /* space + icon width + space */
+    width: 100%;
+    padding-top: var(--space-4);
+    padding-bottom: var(--space-4);
+    font-size: var(--text-base);
+    background-color: hsl(var(--surface-muted));
+}
+
 
 /* Public Estimate View */
 .public-estimate-container { max-width: 900px; margin: 0 auto; padding: var(--space-4); }

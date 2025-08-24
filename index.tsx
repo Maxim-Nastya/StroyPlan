@@ -10,9 +10,17 @@ const ReplayIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="n
 const PrintIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 8H5C3.34 8 2 9.34 2 11V17H6V21H18V17H22V11C22 9.34 20.66 8 19 8ZM16 19H8V14H16V19ZM19 12C18.45 12 18 11.55 18 11C18 10.45 18.45 10 19 10C19.55 10 20 10.45 20 11C20 11.55 19.55 12 19 12ZM18 3H6V7H18V3Z" fill="currentColor"/></svg>;
 const SettingsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.43 12.98C19.47 12.66 19.5 12.34 19.5 12C19.5 11.66 19.47 11.34 19.43 11.02L21.54 9.37C21.73 9.22 21.78 8.95 21.66 8.73L19.66 5.27C19.54 5.05 19.27 4.96 19.05 5.05L16.56 6.05C16.04 5.65 15.48 5.32 14.87 5.07L14.5 2.42C14.46 2.18 14.25 2 14 2H10C9.75 2 9.54 2.18 9.5 2.42L9.13 5.07C8.52 5.32 7.96 5.66 7.44 6.05L4.95 5.05C4.73 4.96 4.46 5.05 4.34 5.27L2.34 8.73C2.21 8.95 2.27 9.22 2.46 9.37L4.57 11.02C4.53 11.34 4.5 11.67 4.5 12C4.5 12.33 4.53 12.66 4.57 12.98L2.46 14.63C2.27 14.78 2.21 15.05 2.34 15.27L4.34 18.73C4.46 18.95 4.73 19.04 4.95 18.95L7.44 17.94C7.96 18.34 8.52 18.68 9.13 18.93L9.5 21.58C9.54 21.82 9.75 22 10 22H14C14.25 22 14.46 21.82 14.5 21.58L14.87 18.93C15.48 18.68 16.04 18.34 16.56 17.94L19.05 18.95C19.27 19.04 19.54 18.95 19.66 18.73L21.66 15.27C21.78 15.05 21.73 14.78 21.54 14.63L19.43 12.98ZM12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.93 8.5 15.5 10.07 15.5 12C15.5 13.93 13.93 15.5 12 15.5Z" fill="currentColor"/></svg>;
 const ImageIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 19V5C21 3.9 20.1 3 19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19ZM8.5 13.5L11 16.5L14.5 12L19 18H5L8.5 13.5Z" fill="currentColor"/></svg>;
+const LogoutIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 7L15.59 8.41L18.17 11H8V13H18.17L15.59 15.59L17 17L22 12L17 7ZM4 5H12V3H4C2.9 3 2 3.9 2 5V19C2 20.1 2.9 21 4 21H12V19H4V5Z" fill="currentColor"/></svg>;
+const EmailIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4ZM20 8L12 13L4 8V6L12 11L20 6V8Z" fill="currentColor"/></svg>;
+const LockIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 8H17V6C17 3.24 14.76 1 12 1C9.24 1 7 3.24 7 6V8H6C4.9 8 4 8.9 4 10V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V10C20 8.9 19.1 8 18 8ZM12 17C10.9 17 10 16.1 10 15C10 13.9 10.9 13 12 13C13.1 13 14 13.9 14 15C14 16.1 13.1 17 12 17ZM15.1 8H8.9V6C8.9 4.29 10.29 2.9 12 2.9C13.71 2.9 15.1 4.29 15.1 6V8Z" fill="currentColor"/></svg>;
 
 
 // --- DATA TYPES ---
+interface User {
+    email: string;
+    password?: string; // Should be hashed in a real app
+}
+
 interface Client {
     name: string;
     phone: string;
@@ -70,6 +78,9 @@ interface Project {
 // --- HOOK FOR LOCALSTORAGE ---
 function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
     const [storedValue, setStoredValue] = useState<T>(() => {
+        if (typeof window === 'undefined') {
+            return initialValue;
+        }
         try {
             const item = window.localStorage.getItem(key);
             return item ? JSON.parse(item) : initialValue;
@@ -83,7 +94,9 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<Re
         try {
             const valueToStore = value instanceof Function ? value(storedValue) : value;
             setStoredValue(valueToStore);
-            window.localStorage.setItem(key, JSON.stringify(valueToStore));
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(key, JSON.stringify(valueToStore));
+            }
         } catch (error) {
             console.error(error);
         }
@@ -219,7 +232,7 @@ const EstimateEditor = ({ project, setProjects, directory, setDirectory }: { pro
     };
 
     const handleShare = () => {
-        const estimateLink = `${window.location.origin}${window.location.pathname}?view=estimate&projectId=${project.id}`;
+        const estimateLink = `${window.location.origin}${window.location.pathname}?view=estimate&projectId=${project.id}&user=${project.contractor?.contactName}`; // Simple way to scope public views
         navigator.clipboard.writeText(estimateLink).then(() => {
             alert(`Ссылка на смету скопирована!\n\n${estimateLink}`);
         });
@@ -747,8 +760,16 @@ const ProjectList = ({ projects, onSelectProject, onNewProject }: { projects: Pr
     );
 };
 
-const PublicEstimateView = ({ projects, projectId }: { projects: Project[], projectId: string }) => {
-    const project = projects.find(p => p.id === projectId);
+const PublicEstimateView = () => {
+    const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+    const projectId = urlParams.get('projectId');
+    // In a real app, you'd fetch this data. We'll simulate by reading all projects.
+    const [allProjects] = useLocalStorage<Project[]>('prorab_projects_all', []);
+
+    // This is a simplified and insecure way for a prototype.
+    // A real app would have a dedicated public endpoint.
+    const project = allProjects.find(p => p.id === projectId);
+
 
     if (!project) {
         return <div className="loader">Смета не найдена или ссылка некорректна.</div>;
@@ -846,46 +867,108 @@ const PublicEstimateView = ({ projects, projectId }: { projects: Project[], proj
     );
 };
 
-const App = () => {
-    const [projects, setProjects] = useLocalStorage<Project[]>('prorab_projects', []);
-    const [directory, setDirectory] = useLocalStorage<DirectoryItem[]>('prorab_directory', []);
-    const [userProfile, setUserProfile] = useLocalStorage<UserProfile>('prorab_profile', { companyName: '', contactName: '', phone: '', logo: '' });
+const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: (user: User) => void }) => {
+    const [isLogin, setIsLogin] = useState(true);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [users, setUsers] = useLocalStorage<User[]>('prorab_users', []);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+
+        if (isLogin) {
+            const user = users.find(u => u.email === email);
+            if (user && user.password === password) {
+                onLoginSuccess(user);
+            } else {
+                setError('Неверный email или пароль.');
+            }
+        } else {
+            if (users.some(u => u.email === email)) {
+                setError('Пользователь с таким email уже существует.');
+                return;
+            }
+            if(password.length < 6) {
+                setError('Пароль должен быть не менее 6 символов.');
+                return;
+            }
+            const newUser = { email, password };
+            setUsers(prev => [...prev, newUser]);
+            onLoginSuccess(newUser);
+        }
+    };
+
+    return (
+        <main className="auth-container">
+            <div className="auth-card animate-fade-slide-up">
+                <div className="auth-header">
+                    <h1>Прораб</h1>
+                    <p>{isLogin ? 'Войдите, чтобы продолжить' : 'Создайте аккаунт для начала работы'}</p>
+                </div>
+
+                <div className="modal-toggle" style={{ marginBottom: 'var(--space-6)' }}>
+                    <button className={isLogin ? 'active' : ''} onClick={() => { setIsLogin(true); setError('') }}>Вход</button>
+                    <button className={!isLogin ? 'active' : ''} onClick={() => { setIsLogin(false); setError('') }}>Регистрация</button>
+                </div>
+                
+                <form onSubmit={handleSubmit}>
+                    {error && <p className="auth-error">{error}</p>}
+                    <div className="form-group-icon">
+                        <EmailIcon />
+                        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
+                    </div>
+                    <div className="form-group-icon">
+                        <LockIcon />
+                        <input type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} required />
+                    </div>
+                    <button type="submit" className="btn btn-primary w-100">{isLogin ? 'Войти' : 'Создать аккаунт'}</button>
+                </form>
+            </div>
+        </main>
+    );
+};
+
+
+const AppContent = ({ currentUser, onLogout }: { currentUser: User, onLogout: () => void }) => {
+    const userKey = currentUser.email;
+    const [projects, setProjects] = useLocalStorage<Project[]>(`prorab_projects_${userKey}`, []);
+    const [directory, setDirectory] = useLocalStorage<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
+    const [userProfile, setUserProfile] = useLocalStorage<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
     const [showNewProjectModal, setShowNewProjectModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
 
-    // --- Routing Logic ---
-    const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
-    const view = urlParams.get('view');
-    const publicProjectId = urlParams.get('projectId');
-
-    if (view === 'estimate' && publicProjectId) {
-        return <PublicEstimateView projects={projects} projectId={publicProjectId} />;
-    }
-    // --- End Routing Logic ---
-
-
+    // This effect is a workaround for sharing data to the public view
+    // In a real app, the public view would fetch its own data.
+    useEffect(() => {
+        const allProjects = Object.keys(localStorage)
+            .filter(k => k.startsWith('prorab_projects_'))
+            .flatMap(k => JSON.parse(localStorage.getItem(k) || '[]'));
+        localStorage.setItem('prorab_projects_all', JSON.stringify(allProjects));
+    }, [projects]);
+    
     const selectedProject = useMemo(() => {
         return projects.find(p => p.id === selectedProjectId) || null;
     }, [projects, selectedProjectId]);
     
-    // Simple routing based on component state
-    const handleSelectProject = (id: string) => {
-        setSelectedProjectId(id);
-    };
-
-    const handleBack = () => {
-        setSelectedProjectId(null);
-    };
+    const handleSelectProject = (id: string) => setSelectedProjectId(id);
+    const handleBack = () => setSelectedProjectId(null);
 
     return (
         <>
             <header>
                 <div className="header-content">
                     <h1>Прораб</h1>
-                    <button className="settings-btn" onClick={() => setShowProfileModal(true)} title="Настройки профиля">
-                        <SettingsIcon />
-                    </button>
+                    <div className="header-actions">
+                        <button className="settings-btn" onClick={() => setShowProfileModal(true)} title="Настройки профиля">
+                            <SettingsIcon />
+                        </button>
+                        <button className="settings-btn" onClick={onLogout} title="Выход">
+                            <LogoutIcon />
+                        </button>
+                    </div>
                 </div>
             </header>
             <main className="app-container">
@@ -919,6 +1002,36 @@ const App = () => {
             />
         </>
     );
+}
+
+const App = () => {
+    const [currentUser, setCurrentUser] = useLocalStorage<User | null>('prorab_currentUser', null);
+    
+    // --- Routing Logic ---
+    const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+    const view = urlParams.get('view');
+    const publicProjectId = urlParams.get('projectId');
+
+    if (view === 'estimate' && publicProjectId) {
+        return <PublicEstimateView />;
+    }
+    // --- End Routing Logic ---
+
+    const handleLoginSuccess = (user: User) => {
+        setCurrentUser({email: user.email}); // Store only non-sensitive data
+    };
+
+    const handleLogout = () => {
+        if(window.confirm('Вы уверены, что хотите выйти?')) {
+            setCurrentUser(null);
+        }
+    };
+
+    if (!currentUser) {
+        return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
+    }
+    
+    return <AppContent currentUser={currentUser} onLogout={handleLogout} />;
 };
 
 // This is the robust way to initialize the React app.
