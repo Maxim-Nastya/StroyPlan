@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, createContext, useContext, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // --- ICONS ---
@@ -13,7 +13,7 @@ const ImageIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="no
 const LogoutIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 7L15.59 8.41L18.17 11H8V13H18.17L15.59 15.59L17 17L22 12L17 7ZM4 5H12V3H4C2.9 3 2 3.9 2 5V19C2 20.1 2.9 21 4 21H12V19H4V5Z" fill="currentColor"/></svg>;
 const EmailIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4ZM20 8L12 13L4 8V6L12 11L20 6V8Z" fill="currentColor"/></svg>;
 const LockIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 8H17V6C17 3.24 14.76 1 12 1C9.24 1 7 3.24 7 6V8H6C4.9 8 4 8.9 4 10V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V10C20 8.9 19.1 8 18 8ZM12 17C10.9 17 10 16.1 10 15C10 13.9 10.9 13 12 13C13.1 13 14 13.9 14 15C14 16.1 13.1 17 12 17ZM15.1 8H8.9V6C8.9 4.29 10.29 2.9 12 2.9C13.71 2.9 15.1 4.29 15.1 6V8Z" fill="currentColor"/></svg>;
-
+const ReportsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 9.2H8V19H5V9.2ZM10.6 5H13.4V19H10.6V5ZM16.2 13H19V19H16.2V13Z" fill="currentColor"/></svg>;
 
 // --- DATA TYPES ---
 interface User {
@@ -63,6 +63,11 @@ interface Payment {
     amount: number;
 }
 
+interface Discount {
+    type: 'percent' | 'fixed';
+    value: number;
+}
+
 interface Project {
     id: string;
     name: string;
@@ -72,11 +77,12 @@ interface Project {
     estimate: EstimateItem[];
     expenses: Expense[];
     payments: Payment[];
+    discount?: Discount;
     contractor?: UserProfile;
 }
 
 // --- HOOK FOR LOCALSTORAGE ---
-function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
     const [storedValue, setStoredValue] = useState<T>(() => {
         if (typeof window === 'undefined') {
             return initialValue;
@@ -105,6 +111,54 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<Re
     return [storedValue, setValue];
 }
 
+// --- SIMULATED API ---
+const api = {
+    _get: <T>(key: string, defaultValue: T): T => JSON.parse(localStorage.getItem(key) || JSON.stringify(defaultValue)),
+    _set: <T>(key: string, value: T) => localStorage.setItem(key, JSON.stringify(value)),
+    _delay: (ms = 500) => new Promise(res => setTimeout(res, ms)),
+
+    async login(email: string, password: string): Promise<User> {
+        await this._delay();
+        const users = this._get<User[]>('prorab_users', []);
+        const user = users.find(u => u.email === email);
+        if (user && user.password === password) {
+            return { email: user.email };
+        }
+        throw new Error('Неверный email или пароль.');
+    },
+
+    async register(email: string, password: string): Promise<User> {
+        await this._delay(700);
+        const users = this._get<User[]>('prorab_users', []);
+        if (users.some(u => u.email === email)) {
+            throw new Error('Пользователь с таким email уже существует.');
+        }
+        const newUser: User = { email, password };
+        this._set('prorab_users', [...users, newUser]);
+        return { email: newUser.email };
+    },
+
+    async getData(userKey: string): Promise<{ projects: Project[], directory: DirectoryItem[], profile: UserProfile }> {
+        await this._delay(800);
+        const projects = this._get<Project[]>(`prorab_projects_${userKey}`, []);
+        const directory = this._get<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
+        const profile = this._get<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
+        
+        // This is a workaround for sharing data to the public view
+        const allProjects = Object.keys(localStorage)
+            .filter(k => k.startsWith('prorab_projects_'))
+            .flatMap(k => JSON.parse(localStorage.getItem(k) || '[]'));
+        this._set('prorab_projects_all', allProjects);
+        
+        return { projects, directory, profile };
+    },
+
+    async saveData<T>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T): Promise<void> {
+        await this._delay();
+        this._set(`prorab_${dataType}_${userKey}`, data);
+    }
+};
+
 // --- UTILITY FUNCTIONS ---
 const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amount);
@@ -119,18 +173,65 @@ const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reje
     reader.onerror = error => reject(error);
 });
 
-
 // --- UI COMPONENTS ---
 
-const Modal = ({ show, onClose, title, children }: { show: boolean, onClose: () => void, title: string, children: React.ReactNode }) => {
+interface LoaderProps {
+  fullScreen?: boolean;
+}
+const Loader = ({ fullScreen = false }: LoaderProps) => (
+    <div className={fullScreen ? "loader-overlay" : ""}>
+        <div className="loader-spinner"></div>
+    </div>
+);
+
+type ToastMessage = { id: number; message: string; type: 'success' | 'error'; };
+const ToastContext = createContext<{ addToast: (message: string, type: 'success' | 'error') => void; }>({ addToast: () => {} });
+
+interface ToastProviderProps {
+    children: React.ReactNode;
+}
+const ToastProvider = ({ children }: ToastProviderProps) => {
+    const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+    const addToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => {
+            setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
+        }, 3000);
+    }, []);
+
+    return (
+        <ToastContext.Provider value={{ addToast }}>
+            {children}
+            <div className="toast-container">
+                {toasts.map(toast => (
+                    <div key={toast.id} className={`toast toast-${toast.type}`}>
+                        {toast.message}
+                    </div>
+                ))}
+            </div>
+        </ToastContext.Provider>
+    );
+};
+
+const useToasts = () => useContext(ToastContext);
+
+interface ModalProps {
+    show: boolean;
+    onClose: () => void;
+    title: string;
+    children: React.ReactNode;
+}
+const Modal = ({ show, onClose, title, children }: ModalProps) => {
     if (!show) return null;
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h3>{title}</h3>
-                    <button onClick={onClose} className="close-button">&times;</button>
+                    <h3 id="modal-title">{title}</h3>
+                    <button onClick={onClose} className="close-button" aria-label="Закрыть">&times;</button>
                 </div>
                 {children}
             </div>
@@ -140,9 +241,17 @@ const Modal = ({ show, onClose, title, children }: { show: boolean, onClose: () 
 
 // --- CORE APP COMPONENTS ---
 
-const FinancialDashboard = ({ project }: { project: Project }) => {
+interface FinancialDashboardProps {
+    project: Project;
+}
+const FinancialDashboard = ({ project }: FinancialDashboardProps) => {
     const totals = useMemo(() => {
-        const estimateTotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
+        const subtotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
+        const discountAmount = project.discount
+            ? (project.discount.type === 'percent' ? subtotal * (project.discount.value / 100) : project.discount.value)
+            : 0;
+        const estimateTotal = subtotal - discountAmount;
+        
         const materialCosts = project.estimate
             .filter(item => item.type === 'Материал')
             .reduce((sum, item) => sum + item.quantity * item.price, 0);
@@ -179,13 +288,40 @@ const FinancialDashboard = ({ project }: { project: Project }) => {
     );
 };
 
-const EstimateEditor = ({ project, setProjects, directory, setDirectory }: { project: Project, setProjects: React.Dispatch<React.SetStateAction<Project[]>>, directory: DirectoryItem[], setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>> }) => {
+interface EstimateEditorProps {
+    project: Project;
+    projects: Project[];
+    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    directory: DirectoryItem[];
+    setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
+    userKey: string;
+}
+const EstimateEditor = ({ project, projects, setProjects, directory, setDirectory, userKey }: EstimateEditorProps) => {
     const [showModal, setShowModal] = useState(false);
     const [editingItem, setEditingItem] = useState<EstimateItem | null>(null);
     const [newItem, setNewItem] = useState<Omit<EstimateItem, 'id'>>({ name: '', type: 'Работа', unit: 'шт', quantity: 1, price: 0 });
     const [suggestions, setSuggestions] = useState<DirectoryItem[]>([]);
+    const [isSaving, setIsSaving] = useState(false);
+    const { addToast } = useToasts();
     
+    const [discountType, setDiscountType] = useState<'percent' | 'fixed'>(project.discount?.type || 'percent');
+    const [discountValue, setDiscountValue] = useState<number>(project.discount?.value || 0);
+
+    useEffect(() => {
+        setDiscountType(project.discount?.type || 'percent');
+        setDiscountValue(project.discount?.value || 0);
+    }, [project]);
+
     const isEditing = editingItem !== null;
+
+    const subtotal = useMemo(() => project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0), [project.estimate]);
+    const discountAmount = useMemo(() => {
+        if (discountType === 'percent') {
+            return subtotal * (discountValue / 100);
+        }
+        return discountValue;
+    }, [subtotal, discountType, discountValue]);
+    const total = subtotal - discountAmount;
 
     const openModalForNew = () => {
         setEditingItem(null);
@@ -200,41 +336,72 @@ const EstimateEditor = ({ project, setProjects, directory, setDirectory }: { pro
     };
 
     const closeModal = () => {
+        if(isSaving) return;
         setShowModal(false);
         setSuggestions([]);
         setEditingItem(null);
     };
     
-    const handleSaveItem = () => {
+    const handleSaveItem = async () => {
         const trimmedName = newItem.name.trim();
         if (!trimmedName) return;
-
-        if (isEditing) { // Update existing item
-            setProjects(prev => prev.map(p => p.id === project.id ? { ...p, estimate: p.estimate.map(item => item.id === editingItem.id ? { ...item, ...newItem, name: trimmedName } : item) } : p));
-        } else { // Add new item
-            const itemWithId: EstimateItem = { ...newItem, name: trimmedName, id: generateId() };
-            setProjects(prev => prev.map(p => p.id === project.id ? { ...p, estimate: [...p.estimate, itemWithId] } : p));
+        setIsSaving(true);
+        try {
+            if (isEditing && editingItem) { // Update existing item
+                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, estimate: p.estimate.map(item => item.id === editingItem.id ? { ...item, ...newItem, name: trimmedName } : item) } : p);
+                setProjects(updatedProjects);
+                await api.saveData(userKey, 'projects', updatedProjects);
+            } else { // Add new item
+                const itemWithId: EstimateItem = { ...newItem, name: trimmedName, id: generateId() };
+                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, estimate: [...p.estimate, itemWithId] } : p);
+                setProjects(updatedProjects);
+                await api.saveData(userKey, 'projects', updatedProjects);
+            }
+            
+            const isInDirectory = directory.some(dirItem => dirItem.name.toLowerCase() === trimmedName.toLowerCase());
+            if (!isInDirectory) {
+                const updatedDirectory = [...directory, { name: trimmedName, type: newItem.type, unit: newItem.unit, price: newItem.price }];
+                setDirectory(updatedDirectory);
+                await api.saveData(userKey, 'directory', updatedDirectory);
+            }
+            addToast(isEditing ? 'Позиция обновлена' : 'Позиция добавлена', 'success');
+            closeModal();
+        } catch (e) {
+            addToast('Не удалось сохранить', 'error');
+        } finally {
+            setIsSaving(false);
         }
-        
-        // Add to personal directory if it's a new item name
-        const isInDirectory = directory.some(dirItem => dirItem.name.toLowerCase() === trimmedName.toLowerCase());
-        if (!isInDirectory) {
-            setDirectory(prev => [...prev, { name: trimmedName, type: newItem.type, unit: newItem.unit, price: newItem.price }]);
-        }
-
-        closeModal();
     };
 
-    const handleDeleteItem = (itemId: string) => {
+    const handleDeleteItem = async (itemId: string) => {
         if (window.confirm('Вы уверены, что хотите удалить эту позицию?')) {
-            setProjects(prev => prev.map(p => p.id === project.id ? { ...p, estimate: p.estimate.filter(item => item.id !== itemId) } : p));
+            try {
+                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, estimate: p.estimate.filter(item => item.id !== itemId) } : p);
+                setProjects(updatedProjects);
+                await api.saveData(userKey, 'projects', updatedProjects);
+                addToast('Позиция удалена', 'success');
+            } catch (e) {
+                addToast('Не удалось удалить', 'error');
+            }
+        }
+    };
+
+    const handleDiscountChange = async (type: 'percent' | 'fixed', value: number) => {
+        try {
+            const newDiscount: Discount = { type, value };
+            const updatedProjects = projects.map(p => p.id === project.id ? { ...p, discount: newDiscount } : p);
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Скидка применена', 'success');
+        } catch (e) {
+            addToast('Не удалось применить скидку', 'error');
         }
     };
 
     const handleShare = () => {
-        const estimateLink = `${window.location.origin}${window.location.pathname}?view=estimate&projectId=${project.id}&user=${project.contractor?.contactName}`; // Simple way to scope public views
+        const estimateLink = `${window.location.origin}${window.location.pathname}?view=estimate&projectId=${project.id}`;
         navigator.clipboard.writeText(estimateLink).then(() => {
-            alert(`Ссылка на смету скопирована!\n\n${estimateLink}`);
+            addToast('Ссылка на смету скопирована!', 'success');
         });
     };
 
@@ -298,8 +465,8 @@ const EstimateEditor = ({ project, setProjects, directory, setDirectory }: { pro
                                     <td className="align-right">{formatCurrency(item.quantity * item.price)}</td>
                                     <td className="align-right">
                                         <div className="item-actions">
-                                            <button className="action-btn" onClick={() => openModalForEdit(item)} title="Редактировать"><EditIcon /></button>
-                                            <button className="action-btn" onClick={() => handleDeleteItem(item.id)} title="Удалить"><DeleteIcon /></button>
+                                            <button className="action-btn" onClick={() => openModalForEdit(item)} aria-label="Редактировать"><EditIcon /></button>
+                                            <button className="action-btn" onClick={() => handleDeleteItem(item.id)} aria-label="Удалить"><DeleteIcon /></button>
                                         </div>
                                     </td>
                                 </tr>
@@ -308,11 +475,49 @@ const EstimateEditor = ({ project, setProjects, directory, setDirectory }: { pro
                     </tbody>
                 </table>
             </div>
+
+            <div className="estimate-summary-container">
+                <div className="discount-controls">
+                    <label>Скидка</label>
+                    <div className="d-flex">
+                        <div className="modal-toggle">
+                            <button className={discountType === 'percent' ? 'active' : ''} onClick={() => { setDiscountType('percent'); handleDiscountChange('percent', discountValue); }}>%</button>
+                            <button className={discountType === 'fixed' ? 'active' : ''} onClick={() => { setDiscountType('fixed'); handleDiscountChange('fixed', discountValue); }}>₽</button>
+                        </div>
+                        <input 
+                            type="number" 
+                            className="discount-input"
+                            value={discountValue} 
+                            onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
+                            onBlur={() => handleDiscountChange(discountType, discountValue)}
+                            step={discountType === 'percent' ? '0.1' : '100'}
+                        />
+                    </div>
+                </div>
+
+                <div className="estimate-totals">
+                     <div className="total-row">
+                         <span>Подытог</span>
+                         <span>{formatCurrency(subtotal)}</span>
+                     </div>
+                     {discountAmount > 0 && (
+                         <div className="total-row discount-row">
+                             <span>Скидка ({discountType === 'percent' ? `${discountValue}%` : formatCurrency(discountValue)})</span>
+                             <span>- {formatCurrency(discountAmount)}</span>
+                         </div>
+                     )}
+                     <div className="total-row grand-total">
+                         <span>Итого</span>
+                         <span>{formatCurrency(total)}</span>
+                     </div>
+                 </div>
+            </div>
+
              <Modal show={showModal} onClose={closeModal} title={isEditing ? 'Редактировать позицию' : 'Добавить позицию'}>
-                <form onSubmit={(e) => { e.preventDefault(); handleSaveItem(); }}>
+                <form onSubmit={(e: React.FormEvent) => { e.preventDefault(); handleSaveItem(); }}>
                     <div className="form-group autocomplete-container">
                         <label>Наименование</label>
-                        <input type="text" value={newItem.name} onChange={handleNameChange} required autoComplete="off" />
+                        <input type="text" value={newItem.name} onChange={handleNameChange} required autoComplete="off" disabled={isSaving}/>
                         {suggestions.length > 0 && (
                             <div className="autocomplete-suggestions">
                                 {suggestions.map(suggestion => (
@@ -328,7 +533,7 @@ const EstimateEditor = ({ project, setProjects, directory, setDirectory }: { pro
                     </div>
                      <div className="form-group">
                         <label>Тип</label>
-                        <select value={newItem.type} onChange={e => setNewItem({...newItem, type: e.target.value as 'Работа' | 'Материал'})}>
+                        <select value={newItem.type} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewItem({...newItem, type: e.target.value as 'Работа' | 'Материал'})} disabled={isSaving}>
                             <option>Работа</option>
                             <option>Материал</option>
                         </select>
@@ -336,20 +541,22 @@ const EstimateEditor = ({ project, setProjects, directory, setDirectory }: { pro
                     <div className="d-flex gap-1">
                         <div className="form-group w-100">
                            <label>Количество</label>
-                           <input type="number" step="any" value={newItem.quantity} onChange={e => setNewItem({...newItem, quantity: parseFloat(e.target.value) || 0})} required />
+                           <input type="number" step="any" value={newItem.quantity} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewItem({...newItem, quantity: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
                         </div>
                         <div className="form-group w-100">
                            <label>Ед. изм. (шт, м², час)</label>
-                           <input type="text" value={newItem.unit} onChange={e => setNewItem({...newItem, unit: e.target.value})} required />
+                           <input type="text" value={newItem.unit} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewItem({...newItem, unit: e.target.value})} required disabled={isSaving}/>
                         </div>
                     </div>
                     <div className="form-group">
                         <label>Цена за единицу</label>
-                        <input type="number" step="0.01" value={newItem.price} onChange={e => setNewItem({...newItem, price: parseFloat(e.target.value) || 0})} required />
+                        <input type="number" step="0.01" value={newItem.price} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewItem({...newItem, price: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
                     </div>
                     <div className="form-actions">
-                        <button type="button" className="btn btn-secondary" onClick={closeModal}>Отмена</button>
-                        <button type="submit" className="btn btn-primary">{isEditing ? 'Сохранить' : 'Добавить'}</button>
+                        <button type="button" className="btn btn-secondary" onClick={closeModal} disabled={isSaving}>Отмена</button>
+                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                            {isSaving ? <Loader /> : (isEditing ? 'Сохранить' : 'Добавить')}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -357,12 +564,20 @@ const EstimateEditor = ({ project, setProjects, directory, setDirectory }: { pro
     );
 };
 
-const ExpenseTracker = ({ project, setProjects }: { project: Project, setProjects: React.Dispatch<React.SetStateAction<Project[]>> }) => {
+interface ExpenseTrackerProps {
+    project: Project;
+    projects: Project[];
+    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    userKey: string;
+}
+const ExpenseTracker = ({ project, projects, setProjects, userKey }: ExpenseTrackerProps) => {
     const [showModal, setShowModal] = useState(false);
     const [entryType, setEntryType] = useState<'expense' | 'payment'>('expense');
     const [newEntry, setNewEntry] = useState({ date: new Date().toISOString().split('T')[0], description: '', amount: 0 });
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const { addToast } = useToasts();
 
     const transactions = useMemo(() => {
         const combinedExpenses = project.expenses.map(e => ({ ...e, type: 'expense' as const }));
@@ -372,35 +587,54 @@ const ExpenseTracker = ({ project, setProjects }: { project: Project, setProject
 
     const handleAddEntry = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (entryType === 'expense') {
-            let receiptDataUrl: string | undefined = undefined;
-            if (receiptFile) {
-                receiptDataUrl = await fileToBase64(receiptFile);
+        setIsSaving(true);
+        try {
+            if (entryType === 'expense') {
+                let receiptDataUrl: string | undefined = undefined;
+                if (receiptFile) {
+                    receiptDataUrl = await fileToBase64(receiptFile);
+                }
+                const expenseWithId: Expense = { ...newEntry, id: generateId(), receipt: receiptDataUrl };
+                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, expenses: [...p.expenses, expenseWithId] } : p);
+                setProjects(updatedProjects);
+                await api.saveData(userKey, 'projects', updatedProjects);
+            } else {
+                const paymentWithId: Payment = { id: generateId(), date: newEntry.date, amount: newEntry.amount };
+                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, payments: [...p.payments, paymentWithId] } : p);
+                setProjects(updatedProjects);
+                await api.saveData(userKey, 'projects', updatedProjects);
             }
-            const expenseWithId: Expense = { ...newEntry, id: generateId(), receipt: receiptDataUrl };
-            setProjects(prev => prev.map(p => p.id === project.id ? { ...p, expenses: [...p.expenses, expenseWithId] } : p));
-        } else {
-            const paymentWithId: Payment = { id: generateId(), date: newEntry.date, amount: newEntry.amount };
-            setProjects(prev => prev.map(p => p.id === project.id ? { ...p, payments: [...p.payments, paymentWithId] } : p));
+            addToast('Операция добавлена', 'success');
+            setShowModal(false);
+            setNewEntry({ date: new Date().toISOString().split('T')[0], description: '', amount: 0 });
+            setReceiptFile(null);
+        } catch (e) {
+            addToast('Не удалось сохранить', 'error');
+        } finally {
+            setIsSaving(false);
         }
-        setShowModal(false);
-        setNewEntry({ date: new Date().toISOString().split('T')[0], description: '', amount: 0 });
-        setReceiptFile(null);
     };
     
-    const handleDeleteTransaction = (id: string, type: 'expense' | 'payment') => {
+    const handleDeleteTransaction = async (id: string, type: 'expense' | 'payment') => {
         if (!window.confirm('Вы уверены, что хотите удалить эту запись?')) return;
         
-        setProjects(prevProjects => prevProjects.map(p => {
-            if (p.id === project.id) {
-                if (type === 'expense') {
-                    return { ...p, expenses: p.expenses.filter(e => e.id !== id) };
-                } else { // type === 'payment'
-                    return { ...p, payments: p.payments.filter(pay => pay.id !== id) };
+        try {
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    if (type === 'expense') {
+                        return { ...p, expenses: p.expenses.filter(e => e.id !== id) };
+                    } else { // type === 'payment'
+                        return { ...p, payments: p.payments.filter(pay => pay.id !== id) };
+                    }
                 }
-            }
-            return p;
-        }));
+                return p;
+            });
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Запись удалена', 'success');
+        } catch (e) {
+            addToast('Не удалось удалить', 'error');
+        }
     };
     
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -442,14 +676,14 @@ const ExpenseTracker = ({ project, setProjects }: { project: Project, setProject
                                     {t.type === 'expense' ? '-' : '+'}
                                     {formatCurrency(t.amount)}
                                 </span>
-                                 <button className="action-btn" onClick={() => handleDeleteTransaction(t.id, t.type)} title="Удалить"><DeleteIcon /></button>
+                                 <button className="action-btn" onClick={() => handleDeleteTransaction(t.id, t.type)} aria-label="Удалить"><DeleteIcon /></button>
                             </div>
                         </div>
                     ))}
                 </div>
             )}
             
-            <Modal show={showModal} onClose={() => setShowModal(false)} title="Добавить операцию">
+            <Modal show={showModal} onClose={() => !isSaving && setShowModal(false)} title="Добавить операцию">
                  <div className="modal-toggle">
                     <button className={entryType === 'expense' ? 'active' : ''} onClick={() => setEntryType('expense')}>Расход</button>
                     <button className={entryType === 'payment' ? 'active' : ''} onClick={() => setEntryType('payment')}>Платеж</button>
@@ -457,27 +691,29 @@ const ExpenseTracker = ({ project, setProjects }: { project: Project, setProject
                 <form onSubmit={handleAddEntry}>
                     <div className="form-group">
                         <label>Сумма</label>
-                        <input type="number" step="0.01" value={newEntry.amount} onChange={e => setNewEntry({...newEntry, amount: parseFloat(e.target.value) || 0})} required />
+                        <input type="number" step="0.01" value={newEntry.amount} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEntry({...newEntry, amount: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
                     </div>
                      <div className="form-group">
                         <label>Дата</label>
-                        <input type="date" value={newEntry.date} onChange={e => setNewEntry({...newEntry, date: e.target.value})} required />
+                        <input type="date" value={newEntry.date} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEntry({...newEntry, date: e.target.value})} required disabled={isSaving}/>
                     </div>
                     {entryType === 'expense' && (
                         <>
                             <div className="form-group">
                                 <label>Описание</label>
-                                <input type="text" value={newEntry.description} onChange={e => setNewEntry({...newEntry, description: e.target.value})} placeholder="Например, материалы с рынка" required />
+                                <input type="text" value={newEntry.description} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEntry({...newEntry, description: e.target.value})} placeholder="Например, материалы с рынка" required disabled={isSaving}/>
                             </div>
                             <div className="form-group">
                                 <label>Фото чека (необязательно)</label>
-                                <input type="file" accept="image/*" onChange={handleFileChange} />
+                                <input type="file" accept="image/*" onChange={handleFileChange} disabled={isSaving}/>
                             </div>
                         </>
                     )}
                     <div className="form-actions">
-                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Отмена</button>
-                        <button type="submit" className="btn btn-primary">Добавить</button>
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={isSaving}>Отмена</button>
+                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                           {isSaving ? <Loader /> : 'Добавить'}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -489,10 +725,19 @@ const ExpenseTracker = ({ project, setProjects }: { project: Project, setProject
     );
 };
 
-
-const ProjectEditModal = ({ project, show, onClose, setProjects }: { project: Project, show: boolean, onClose: () => void, setProjects: React.Dispatch<React.SetStateAction<Project[]>> }) => {
+interface ProjectEditModalProps {
+    project: Project;
+    projects: Project[];
+    show: boolean;
+    onClose: () => void;
+    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    userKey: string;
+}
+const ProjectEditModal = ({ project, projects, show, onClose, setProjects, userKey }: ProjectEditModalProps) => {
     const [editedProject, setEditedProject] = useState({ name: '', address: '', clientName: '', clientPhone: '' });
-
+    const [isSaving, setIsSaving] = useState(false);
+    const { addToast } = useToasts();
+    
     useEffect(() => {
         if (project) {
             setEditedProject({
@@ -504,59 +749,85 @@ const ProjectEditModal = ({ project, show, onClose, setProjects }: { project: Pr
         }
     }, [project, show]);
 
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        setProjects(prev => prev.map(p => p.id === project.id ? {
-            ...p,
-            name: editedProject.name,
-            address: editedProject.address,
-            client: {
-                name: editedProject.clientName,
-                phone: editedProject.clientPhone
-            }
-        } : p));
-        onClose();
+        setIsSaving(true);
+        try {
+            const updatedProjects = projects.map(p => p.id === project.id ? {
+                ...p,
+                name: editedProject.name,
+                address: editedProject.address,
+                client: { name: editedProject.clientName, phone: editedProject.clientPhone }
+            } : p);
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Проект сохранен', 'success');
+            onClose();
+        } catch (error) {
+            addToast('Не удалось сохранить проект', 'error');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
-        <Modal show={show} onClose={onClose} title="Редактировать проект">
+        <Modal show={show} onClose={() => !isSaving && onClose()} title="Редактировать проект">
             <form onSubmit={handleSave}>
                 <div className="form-group">
                     <label>Название проекта</label>
-                    <input type="text" value={editedProject.name} onChange={e => setEditedProject({ ...editedProject, name: e.target.value })} required />
+                    <input type="text" value={editedProject.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, name: e.target.value })} required disabled={isSaving}/>
                 </div>
                  <div className="form-group">
                     <label>Адрес</label>
-                    <input type="text" value={editedProject.address} onChange={e => setEditedProject({ ...editedProject, address: e.target.value })} required />
+                    <input type="text" value={editedProject.address} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, address: e.target.value })} required disabled={isSaving}/>
                 </div>
                  <div className="form-group">
                     <label>Имя клиента</label>
-                    <input type="text" value={editedProject.clientName} onChange={e => setEditedProject({ ...editedProject, clientName: e.target.value })} required />
+                    <input type="text" value={editedProject.clientName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, clientName: e.target.value })} required disabled={isSaving}/>
                 </div>
                  <div className="form-group">
                     <label>Телефон клиента</label>
-                    <input type="tel" value={editedProject.clientPhone} onChange={e => setEditedProject({ ...editedProject, clientPhone: e.target.value })} required />
+                    <input type="tel" value={editedProject.clientPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, clientPhone: e.target.value })} required disabled={isSaving}/>
                 </div>
                 <div className="form-actions">
-                    <button type="button" className="btn btn-secondary" onClick={onClose}>Отмена</button>
-                    <button type="submit" className="btn btn-primary">Сохранить</button>
+                    <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSaving}>Отмена</button>
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        {isSaving ? <Loader/> : 'Сохранить'}
+                    </button>
                 </div>
             </form>
         </Modal>
     );
 };
 
-const ProjectDetails = ({ project, setProjects, onBack, directory, setDirectory }: { project: Project, setProjects: React.Dispatch<React.SetStateAction<Project[]>>, onBack: () => void, directory: DirectoryItem[], setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>> }) => {
+interface ProjectDetailsProps {
+    project: Project;
+    projects: Project[];
+    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    onBack: () => void;
+    directory: DirectoryItem[];
+    setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
+    userKey: string;
+}
+const ProjectDetails = ({ project, projects, setProjects, onBack, directory, setDirectory, userKey }: ProjectDetailsProps) => {
     const [isEditing, setIsEditing] = useState(false);
-
-    const handleToggleStatus = () => {
-        const newStatus = project.status === 'В работе' ? 'Завершен' : 'В работе';
+    const { addToast } = useToasts();
+    
+    const handleToggleStatus = async () => {
+        const newStatus: 'В работе' | 'Завершен' = project.status === 'В работе' ? 'Завершен' : 'В работе';
         const confirmationText = newStatus === 'Завершен' 
             ? 'Вы уверены, что хотите завершить проект?' 
             : 'Вы уверены, что хотите вернуть проект в работу?';
         
         if (window.confirm(confirmationText)) {
-            setProjects(prev => prev.map(p => p.id === project.id ? { ...p, status: newStatus } : p));
+            try {
+                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, status: newStatus } : p);
+                setProjects(updatedProjects);
+                await api.saveData(userKey, 'projects', updatedProjects);
+                addToast(`Статус проекта изменен на "${newStatus}"`, 'success');
+            } catch (e) {
+                addToast('Не удалось изменить статус', 'error');
+            }
         }
     };
 
@@ -573,73 +844,105 @@ const ProjectDetails = ({ project, setProjects, onBack, directory, setDirectory 
                         <p>{project.address} &bull; {project.client.name}, {project.client.phone}</p>
                     </div>
                     <div className="project-header-actions">
-                         <button className="action-btn" onClick={() => setIsEditing(true)} title="Редактировать проект"><EditIcon /></button>
-                         <button className="action-btn" onClick={handleToggleStatus} title={project.status === 'В работе' ? "Завершить проект" : "Вернуть в работу"}>
+                         <button className="action-btn" onClick={() => setIsEditing(true)} aria-label="Редактировать проект"><EditIcon /></button>
+                         <button className="action-btn" onClick={handleToggleStatus} aria-label={project.status === 'В работе' ? "Завершить проект" : "Вернуть в работу"}>
                              {project.status === 'В работе' ? <CheckIcon /> : <ReplayIcon />}
                          </button>
                     </div>
                 </div>
             </div>
             <FinancialDashboard project={project} />
-            <EstimateEditor project={project} setProjects={setProjects} directory={directory} setDirectory={setDirectory} />
-            <ExpenseTracker project={project} setProjects={setProjects} />
+            <EstimateEditor project={project} projects={projects} setProjects={setProjects} directory={directory} setDirectory={setDirectory} userKey={userKey} />
+            <ExpenseTracker project={project} projects={projects} setProjects={setProjects} userKey={userKey}/>
 
-            <ProjectEditModal project={project} show={isEditing} onClose={() => setIsEditing(false)} setProjects={setProjects} />
+            <ProjectEditModal project={project} projects={projects} show={isEditing} onClose={() => setIsEditing(false)} setProjects={setProjects} userKey={userKey}/>
         </div>
     );
 };
 
-const ProjectCreationModal = ({ show, onClose, setProjects, userProfile }: { show: boolean, onClose: () => void, setProjects: React.Dispatch<React.SetStateAction<Project[]>>, userProfile: UserProfile }) => {
+interface ProjectCreationModalProps {
+    show: boolean;
+    onClose: () => void;
+    projects: Project[];
+    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    userProfile: UserProfile;
+    userKey: string;
+}
+const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfile, userKey }: ProjectCreationModalProps) => {
     const [newProject, setNewProject] = useState({ name: '', address: '', clientName: '', clientPhone: '' });
+    const [isSaving, setIsSaving] = useState(false);
+    const { addToast } = useToasts();
 
-    const handleCreateProject = (e: React.FormEvent) => {
+    const handleCreateProject = async (e: React.FormEvent) => {
         e.preventDefault();
-        const project: Project = {
-            id: generateId(),
-            name: newProject.name,
-            address: newProject.address,
-            status: 'В работе',
-            client: { name: newProject.clientName, phone: newProject.clientPhone },
-            estimate: [],
-            expenses: [],
-            payments: [],
-            contractor: userProfile,
-        };
-        setProjects(prev => [project, ...prev]);
-        setNewProject({ name: '', address: '', clientName: '', clientPhone: '' });
-        onClose();
+        setIsSaving(true);
+        try {
+            const project: Project = {
+                id: generateId(),
+                name: newProject.name,
+                address: newProject.address,
+                status: 'В работе',
+                client: { name: newProject.clientName, phone: newProject.clientPhone },
+                estimate: [],
+                expenses: [],
+                payments: [],
+                discount: { type: 'percent', value: 0 },
+                contractor: userProfile
+            };
+            const updatedProjects = [project, ...projects];
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Проект создан!', 'success');
+            setNewProject({ name: '', address: '', clientName: '', clientPhone: '' });
+            onClose();
+        } catch (error) {
+            addToast('Не удалось создать проект', 'error');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
-        <Modal show={show} onClose={onClose} title="Новый проект">
+        <Modal show={show} onClose={() => !isSaving && onClose()} title="Новый проект">
             <form onSubmit={handleCreateProject}>
                 <div className="form-group">
                     <label>Название проекта</label>
-                    <input type="text" placeholder="Ремонт квартиры на Лесной" value={newProject.name} onChange={e => setNewProject({ ...newProject, name: e.target.value })} required />
+                    <input type="text" placeholder="Ремонт квартиры на Лесной" value={newProject.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, name: e.target.value })} required disabled={isSaving}/>
                 </div>
                  <div className="form-group">
                     <label>Адрес</label>
-                    <input type="text" placeholder="г. Москва, ул. Лесная, д. 5, кв. 10" value={newProject.address} onChange={e => setNewProject({ ...newProject, address: e.target.value })} required />
+                    <input type="text" placeholder="г. Москва, ул. Лесная, д. 5, кв. 10" value={newProject.address} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, address: e.target.value })} required disabled={isSaving}/>
                 </div>
                  <div className="form-group">
                     <label>Имя клиента</label>
-                    <input type="text" placeholder="Иван Петров" value={newProject.clientName} onChange={e => setNewProject({ ...newProject, clientName: e.target.value })} required />
+                    <input type="text" placeholder="Иван Петров" value={newProject.clientName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, clientName: e.target.value })} required disabled={isSaving}/>
                 </div>
                  <div className="form-group">
                     <label>Телефон клиента</label>
-                    <input type="tel" placeholder="+7 (999) 123-45-67" value={newProject.clientPhone} onChange={e => setNewProject({ ...newProject, clientPhone: e.target.value })} required />
+                    <input type="tel" placeholder="+7 (999) 123-45-67" value={newProject.clientPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, clientPhone: e.target.value })} required disabled={isSaving}/>
                 </div>
                 <div className="form-actions">
-                    <button type="button" className="btn btn-secondary" onClick={onClose}>Отмена</button>
-                    <button type="submit" className="btn btn-primary">Создать</button>
+                    <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSaving}>Отмена</button>
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        {isSaving ? <Loader/> : 'Создать'}
+                    </button>
                 </div>
             </form>
         </Modal>
     );
 };
 
-const ProfileModal = ({ show, onClose, profile, setProfile }: { show: boolean, onClose: () => void, profile: UserProfile, setProfile: React.Dispatch<React.SetStateAction<UserProfile>> }) => {
+interface ProfileModalProps {
+    show: boolean;
+    onClose: () => void;
+    profile: UserProfile;
+    setProfile: React.Dispatch<React.SetStateAction<UserProfile>>;
+    userKey: string;
+}
+const ProfileModal = ({ show, onClose, profile, setProfile, userKey }: ProfileModalProps) => {
     const [formData, setFormData] = useState<UserProfile>(profile);
+    const [isSaving, setIsSaving] = useState(false);
+    const { addToast } = useToasts();
 
     useEffect(() => {
         if (show) {
@@ -654,19 +957,28 @@ const ProfileModal = ({ show, onClose, profile, setProfile }: { show: boolean, o
                 setFormData(prev => ({ ...prev, logo: base64 }));
             } catch (error) {
                 console.error("Error converting file to base64", error);
-                alert("Не удалось загрузить файл.");
+                addToast("Не удалось загрузить файл.", "error");
             }
         }
     };
 
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        setProfile(formData);
-        onClose();
+        setIsSaving(true);
+        try {
+            setProfile(formData);
+            await api.saveData(userKey, 'profile', formData);
+            addToast('Профиль сохранен', 'success');
+            onClose();
+        } catch (error) {
+            addToast('Не удалось сохранить профиль', 'error');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
-        <Modal show={show} onClose={onClose} title="Профиль исполнителя">
+        <Modal show={show} onClose={() => !isSaving && onClose()} title="Профиль исполнителя">
             <form onSubmit={handleSave}>
                 <div className="form-group logo-upload-section">
                     <div className="logo-preview-container">
@@ -677,36 +989,42 @@ const ProfileModal = ({ show, onClose, profile, setProfile }: { show: boolean, o
                         )}
                     </div>
                     <div>
-                        <input type="file" id="logo-upload" onChange={handleFileChange} accept="image/*" style={{ display: 'none' }} />
-                        <label htmlFor="logo-upload" className="btn btn-secondary btn-sm">Загрузить логотип</label>
+                        <input type="file" id="logo-upload" onChange={handleFileChange} accept="image/*" style={{ display: 'none' }} disabled={isSaving}/>
+                        <label htmlFor="logo-upload" className={`btn btn-secondary btn-sm ${isSaving ? 'disabled' : ''}`}>Загрузить логотип</label>
                         <p className="field-hint">Рекомендуется квадратное изображение</p>
                     </div>
                 </div>
 
                 <div className="form-group">
                     <label>Название компании / ИП</label>
-                    <input type="text" placeholder="ИП Петров / Бригада 'Мастер'" value={formData.companyName} onChange={e => setFormData({ ...formData, companyName: e.target.value })} />
+                    <input type="text" placeholder="ИП Петров / Бригада 'Мастер'" value={formData.companyName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, companyName: e.target.value })} disabled={isSaving}/>
                 </div>
                 <div className="form-group">
                     <label>Контактное лицо</label>
-                    <input type="text" placeholder="Иван Петров" value={formData.contactName} onChange={e => setFormData({ ...formData, contactName: e.target.value })} />
+                    <input type="text" placeholder="Иван Петров" value={formData.contactName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, contactName: e.target.value })} disabled={isSaving}/>
                 </div>
                 <div className="form-group">
                     <label>Телефон</label>
-                    <input type="tel" placeholder="+7 (999) 123-45-67" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+                    <input type="tel" placeholder="+7 (999) 123-45-67" value={formData.phone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, phone: e.target.value })} disabled={isSaving}/>
                 </div>
 
                 <div className="form-actions">
-                    <button type="button" className="btn btn-secondary" onClick={onClose}>Отмена</button>
-                    <button type="submit" className="btn btn-primary">Сохранить</button>
+                    <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSaving}>Отмена</button>
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        {isSaving ? <Loader/> : 'Сохранить'}
+                    </button>
                 </div>
             </form>
         </Modal>
     );
 };
 
-
-const ProjectList = ({ projects, onSelectProject, onNewProject }: { projects: Project[], onSelectProject: (id: string) => void, onNewProject: () => void }) => {
+interface ProjectListProps {
+    projects: Project[];
+    onSelectProject: (id: string) => void;
+    onNewProject: () => void;
+}
+const ProjectList = ({ projects, onSelectProject, onNewProject }: ProjectListProps) => {
     const [statusFilter, setStatusFilter] = useState<'В работе' | 'Завершен'>('В работе');
     
     const filteredProjects = useMemo(() => 
@@ -753,7 +1071,7 @@ const ProjectList = ({ projects, onSelectProject, onNewProject }: { projects: Pr
                     ))}
                 </div>
             )}
-            <button className="fab" onClick={onNewProject} title="Новый проект">
+            <button className="fab" onClick={onNewProject} aria-label="Новый проект">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z" fill="currentColor"/></svg>
             </button>
         </div>
@@ -763,22 +1081,36 @@ const ProjectList = ({ projects, onSelectProject, onNewProject }: { projects: Pr
 const PublicEstimateView = () => {
     const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
     const projectId = urlParams.get('projectId');
-    // In a real app, you'd fetch this data. We'll simulate by reading all projects.
-    const [allProjects] = useLocalStorage<Project[]>('prorab_projects_all', []);
+    const [project, setProject] = useState<Project | null | undefined>(undefined);
 
-    // This is a simplified and insecure way for a prototype.
-    // A real app would have a dedicated public endpoint.
-    const project = allProjects.find(p => p.id === projectId);
+    useEffect(() => {
+        // In a real app, you'd fetch this data. We'll simulate by reading from localStorage.
+        try {
+            const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]') as Project[];
+            const foundProject = allProjects.find(p => p.id === projectId);
+            setProject(foundProject || null);
+        } catch (e) {
+            setProject(null);
+        }
+    }, [projectId]);
 
-
-    if (!project) {
-        return <div className="loader">Смета не найдена или ссылка некорректна.</div>;
+    if (project === undefined) {
+        return <Loader fullScreen />;
     }
 
-    const totals = {
+    if (!project) {
+        return <div className="loader-overlay"><div style={{color: 'hsl(var(--text-primary))'}}>Смета не найдена или ссылка некорректна.</div></div>;
+    }
+
+    const subtotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
+    const discountAmount = project.discount
+        ? (project.discount.type === 'percent' ? subtotal * (project.discount.value / 100) : project.discount.value)
+        : 0;
+    const total = subtotal - discountAmount;
+    
+    const totalsByType = {
         work: project.estimate.filter(i => i.type === 'Работа').reduce((sum, item) => sum + item.quantity * item.price, 0),
         material: project.estimate.filter(i => i.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0),
-        total: project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0)
     };
     
     return (
@@ -847,15 +1179,25 @@ const PublicEstimateView = () => {
                  <div className="estimate-totals">
                      <div className="total-row">
                          <span>Работы</span>
-                         <span>{formatCurrency(totals.work)}</span>
+                         <span>{formatCurrency(totalsByType.work)}</span>
                      </div>
                      <div className="total-row">
                          <span>Материалы</span>
-                         <span>{formatCurrency(totals.material)}</span>
+                         <span>{formatCurrency(totalsByType.material)}</span>
                      </div>
+                      <div className="total-row">
+                         <span>Подытог</span>
+                         <span>{formatCurrency(subtotal)}</span>
+                     </div>
+                     {discountAmount > 0 && project.discount && (
+                         <div className="total-row discount-row">
+                             <span>Скидка ({project.discount.type === 'percent' ? `${project.discount.value}%` : formatCurrency(project.discount.value)})</span>
+                             <span>- {formatCurrency(discountAmount)}</span>
+                         </div>
+                     )}
                      <div className="total-row grand-total">
                          <span>Всего по смете</span>
-                         <span>{formatCurrency(totals.total)}</span>
+                         <span>{formatCurrency(total)}</span>
                      </div>
                  </div>
             </div>
@@ -867,36 +1209,39 @@ const PublicEstimateView = () => {
     );
 };
 
-const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: (user: User) => void }) => {
+interface AuthScreenProps {
+    onLoginSuccess: (user: User) => void;
+}
+const AuthScreen = ({ onLoginSuccess }: AuthScreenProps) => {
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const [users, setUsers] = useLocalStorage<User[]>('prorab_users', []);
+    const [isLoading, setIsLoading] = useState(false);
+    const { addToast } = useToasts();
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setIsLoading(true);
 
-        if (isLogin) {
-            const user = users.find(u => u.email === email);
-            if (user && user.password === password) {
+        try {
+            if (isLogin) {
+                const user = await api.login(email, password);
+                addToast('Вход выполнен успешно!', 'success');
                 onLoginSuccess(user);
             } else {
-                setError('Неверный email или пароль.');
+                if(password.length < 6) {
+                    throw new Error('Пароль должен быть не менее 6 символов.');
+                }
+                const newUser = await api.register(email, password);
+                addToast('Аккаунт успешно создан!', 'success');
+                onLoginSuccess(newUser);
             }
-        } else {
-            if (users.some(u => u.email === email)) {
-                setError('Пользователь с таким email уже существует.');
-                return;
-            }
-            if(password.length < 6) {
-                setError('Пароль должен быть не менее 6 символов.');
-                return;
-            }
-            const newUser = { email, password };
-            setUsers(prev => [...prev, newUser]);
-            onLoginSuccess(newUser);
+        } catch (err: any) {
+            setError(err.message || 'Произошла ошибка');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -917,88 +1262,235 @@ const AuthScreen = ({ onLoginSuccess }: { onLoginSuccess: (user: User) => void }
                     {error && <p className="auth-error">{error}</p>}
                     <div className="form-group-icon">
                         <EmailIcon />
-                        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
+                        <input type="email" placeholder="Email" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)} required disabled={isLoading}/>
                     </div>
                     <div className="form-group-icon">
                         <LockIcon />
-                        <input type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} required />
+                        <input type="password" placeholder="Пароль" value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)} required disabled={isLoading}/>
                     </div>
-                    <button type="submit" className="btn btn-primary w-100">{isLogin ? 'Войти' : 'Создать аккаунт'}</button>
+                    <button type="submit" className="btn btn-primary w-100" disabled={isLoading}>
+                        {isLoading ? <Loader /> : (isLogin ? 'Войти' : 'Создать аккаунт')}
+                    </button>
                 </form>
             </div>
         </main>
     );
 };
 
+interface ReportsViewProps {
+    projects: Project[];
+    onBack: () => void;
+}
+const ReportsView = ({ projects, onBack }: ReportsViewProps) => {
+    const { addToast } = useToasts();
+    const overallStats = useMemo(() => {
+        let totalRevenue = 0;
+        let totalExpenses = 0;
+        let totalProfit = 0;
 
-const AppContent = ({ currentUser, onLogout }: { currentUser: User, onLogout: () => void }) => {
+        projects.forEach(project => {
+            const subtotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
+            const discountAmount = project.discount
+                ? (project.discount.type === 'percent' ? subtotal * (project.discount.value / 100) : project.discount.value)
+                : 0;
+            const estimateTotal = subtotal - discountAmount;
+            const materialCosts = project.estimate.filter(item => item.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0);
+            const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
+            const profit = estimateTotal - materialCosts - expensesTotal;
+
+            totalRevenue += estimateTotal;
+            totalExpenses += expensesTotal;
+            totalProfit += profit;
+        });
+
+        return { totalRevenue, totalExpenses, totalProfit };
+    }, [projects]);
+
+    const handleExportCsv = () => {
+        try {
+            const headers = ['Название проекта', 'Клиент', 'Статус', 'Сумма сметы', 'Расходы', 'Оплачено', 'Прибыль'];
+            
+            const rows = projects.map(project => {
+                const subtotal = project.estimate.reduce((sum, item) => sum + item.quantity * item.price, 0);
+                const discountAmount = project.discount ? (project.discount.type === 'percent' ? subtotal * (project.discount.value / 100) : project.discount.value) : 0;
+                const estimateTotal = subtotal - discountAmount;
+                const materialCosts = project.estimate.filter(item => item.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0);
+                const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
+                const totalPaid = project.payments.reduce((sum, payment) => sum + payment.amount, 0);
+                const profit = estimateTotal - materialCosts - expensesTotal;
+                
+                const sanitize = (val: string) => `"${val.replace(/"/g, '""')}"`;
+
+                return [
+                    sanitize(project.name),
+                    sanitize(project.client.name),
+                    sanitize(project.status),
+                    estimateTotal.toFixed(2),
+                    expensesTotal.toFixed(2),
+                    totalPaid.toFixed(2),
+                    profit.toFixed(2)
+                ];
+            });
+
+            const csvRows = [headers.join(';'), ...rows.map(row => row.join(';'))];
+            const csvString = csvRows.join('\n');
+            const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' });
+            
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `prorab_report_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            addToast('Отчет успешно скачан', 'success');
+        } catch (error) {
+            console.error('CSV Export Error:', error);
+            addToast('Не удалось скачать отчет', 'error');
+        }
+    };
+
+    return (
+        <div className="animate-fade-slide-up">
+             <button onClick={onBack} className="back-button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 11H7.83L13.42 5.41L12 4L4 12L12 20L13.41 18.59L7.83 13H20V11Z" fill="currentColor"/></svg>
+                <span>К проектам</span>
+            </button>
+            <div className="reports-header">
+                <h2>Сводный отчет</h2>
+                <button className="btn btn-primary" onClick={handleExportCsv} disabled={projects.length === 0}>
+                    Скачать отчет (CSV)
+                </button>
+            </div>
+            <div className="reports-grid">
+                <div className="report-card">
+                    <div className="report-card-label">Общая выручка</div>
+                    <div className="report-card-value">{formatCurrency(overallStats.totalRevenue)}</div>
+                </div>
+                <div className="report-card">
+                    <div className="report-card-label">Общие расходы</div>
+                    <div className="report-card-value">{formatCurrency(overallStats.totalExpenses)}</div>
+                </div>
+                <div className="report-card">
+                    <div className="report-card-label">Итоговая прибыль</div>
+                    <div className={`report-card-value ${overallStats.totalProfit >= 0 ? 'profit' : 'loss'}`}>
+                        {formatCurrency(overallStats.totalProfit)}
+                    </div>
+                </div>
+            </div>
+             {projects.length === 0 && (
+                <div className="empty-state">
+                    <p>Нет данных для формирования отчета.</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+interface AppContentProps {
+    currentUser: User;
+    onLogout: () => void;
+}
+const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
     const userKey = currentUser.email;
-    const [projects, setProjects] = useLocalStorage<Project[]>(`prorab_projects_${userKey}`, []);
-    const [directory, setDirectory] = useLocalStorage<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
-    const [userProfile, setUserProfile] = useLocalStorage<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [directory, setDirectory] = useState<DirectoryItem[]>([]);
+    const [userProfile, setUserProfile] = useState<UserProfile>({ companyName: '', contactName: userKey, phone: '', logo: '' });
+    
+    const [isLoading, setIsLoading] = useState(true);
+    const [currentView, setCurrentView] = useState<'projects' | 'reports'>('projects');
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
     const [showNewProjectModal, setShowNewProjectModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
+    const { addToast } = useToasts();
 
-    // This effect is a workaround for sharing data to the public view
-    // In a real app, the public view would fetch its own data.
     useEffect(() => {
-        const allProjects = Object.keys(localStorage)
-            .filter(k => k.startsWith('prorab_projects_'))
-            .flatMap(k => JSON.parse(localStorage.getItem(k) || '[]'));
-        localStorage.setItem('prorab_projects_all', JSON.stringify(allProjects));
-    }, [projects]);
+        const loadInitialData = async () => {
+            try {
+                const { projects, directory, profile } = await api.getData(userKey);
+                setProjects(projects);
+                setDirectory(directory);
+                setUserProfile(profile);
+            } catch (e) {
+                addToast('Не удалось загрузить данные', 'error');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadInitialData();
+    }, [userKey, addToast]);
     
     const selectedProject = useMemo(() => {
         return projects.find(p => p.id === selectedProjectId) || null;
     }, [projects, selectedProjectId]);
     
     const handleSelectProject = (id: string) => setSelectedProjectId(id);
-    const handleBack = () => setSelectedProjectId(null);
+    const handleBackToProjects = () => setSelectedProjectId(null);
+    const handleViewChange = (view: 'projects' | 'reports') => {
+        setCurrentView(view);
+        setSelectedProjectId(null); // Reset project selection when switching views
+    };
+
+    if (isLoading) {
+        return <Loader fullScreen />;
+    }
 
     return (
         <>
             <header>
                 <div className="header-content">
-                    <h1>Прораб</h1>
+                    <h1 onClick={() => handleViewChange('projects')} style={{cursor: 'pointer'}} aria-label="На главную">Прораб</h1>
                     <div className="header-actions">
-                        <button className="settings-btn" onClick={() => setShowProfileModal(true)} title="Настройки профиля">
+                        <button className="settings-btn" onClick={() => handleViewChange('reports')} aria-label="Отчеты">
+                            <ReportsIcon />
+                        </button>
+                        <button className="settings-btn" onClick={() => setShowProfileModal(true)} aria-label="Настройки профиля">
                             <SettingsIcon />
                         </button>
-                        <button className="settings-btn" onClick={onLogout} title="Выход">
+                        <button className="settings-btn" onClick={onLogout} aria-label="Выход">
                             <LogoutIcon />
                         </button>
                     </div>
                 </div>
             </header>
             <main className="app-container">
-                 {selectedProject ? (
-                    <ProjectDetails 
-                        project={selectedProject} 
-                        setProjects={setProjects} 
-                        onBack={handleBack}
-                        directory={directory}
-                        setDirectory={setDirectory}
-                    />
-                ) : (
-                    <ProjectList 
-                        projects={projects} 
-                        onSelectProject={handleSelectProject}
-                        onNewProject={() => setShowNewProjectModal(true)}
-                    />
-                )}
+                 {currentView === 'projects' ? (
+                     selectedProject ? (
+                        <ProjectDetails 
+                            project={selectedProject} 
+                            projects={projects}
+                            setProjects={setProjects} 
+                            onBack={handleBackToProjects}
+                            directory={directory}
+                            setDirectory={setDirectory}
+                            userKey={userKey}
+                        />
+                    ) : (
+                        <ProjectList 
+                            projects={projects} 
+                            onSelectProject={handleSelectProject}
+                            onNewProject={() => setShowNewProjectModal(true)}
+                        />
+                    )
+                 ) : (
+                    <ReportsView projects={projects} onBack={() => handleViewChange('projects')} />
+                 )}
             </main>
             <ProjectCreationModal 
                 show={showNewProjectModal} 
                 onClose={() => setShowNewProjectModal(false)} 
+                projects={projects}
                 setProjects={setProjects}
                 userProfile={userProfile}
+                userKey={userKey}
             />
             <ProfileModal
                 show={showProfileModal}
                 onClose={() => setShowProfileModal(false)}
                 profile={userProfile}
                 setProfile={setUserProfile}
+                userKey={userKey}
             />
         </>
     );
@@ -1012,30 +1504,36 @@ const App = () => {
     const view = urlParams.get('view');
     const publicProjectId = urlParams.get('projectId');
 
-    if (view === 'estimate' && publicProjectId) {
-        return <PublicEstimateView />;
-    }
-    // --- End Routing Logic ---
+    const AppWrapper = (
+        <ToastProvider>
+            {(() => {
+                if (view === 'estimate' && publicProjectId) {
+                    return <PublicEstimateView />;
+                }
 
-    const handleLoginSuccess = (user: User) => {
-        setCurrentUser({email: user.email}); // Store only non-sensitive data
-    };
+                const handleLoginSuccess = (user: User) => {
+                    setCurrentUser({email: user.email}); // Store only non-sensitive data
+                };
 
-    const handleLogout = () => {
-        if(window.confirm('Вы уверены, что хотите выйти?')) {
-            setCurrentUser(null);
-        }
-    };
+                const handleLogout = () => {
+                    if(window.confirm('Вы уверены, что хотите выйти?')) {
+                        setCurrentUser(null);
+                    }
+                };
 
-    if (!currentUser) {
-        return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
-    }
-    
-    return <AppContent currentUser={currentUser} onLogout={handleLogout} />;
+                if (!currentUser) {
+                    return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
+                }
+                
+                return <AppContent currentUser={currentUser} onLogout={handleLogout} />;
+            })()}
+        </ToastProvider>
+    );
+
+    return AppWrapper;
 };
 
 // This is the robust way to initialize the React app.
-// It handles cases where the script might run before or after the DOM is fully loaded.
 const renderApp = () => {
     const container = document.getElementById('root');
     if (container) {
@@ -1047,9 +1545,7 @@ const renderApp = () => {
 };
 
 if (document.readyState === 'loading') {
-    // The document is still loading, so we need to wait for the DOMContentLoaded event.
     document.addEventListener('DOMContentLoaded', renderApp);
 } else {
-    // The DOM is already ready, we can call the render function immediately.
     renderApp();
 }
