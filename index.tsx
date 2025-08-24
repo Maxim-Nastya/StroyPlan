@@ -665,7 +665,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
 
              <Modal show={showModal} onClose={closeModal} title={isEditing ? 'Редактировать позицию' : 'Добавить позицию'}>
                 <form onSubmit={(e: React.FormEvent) => { e.preventDefault(); handleSaveItem(); }}>
-                    <div className="form-group-inline autocomplete-container">
+                    <div className="form-group autocomplete-container">
                         <label>Наименование</label>
                         <input type="text" value={newItem.name} onChange={handleNameInputChange} required autoComplete="off" disabled={isSaving}/>
                         {suggestions.length > 0 && (
@@ -681,7 +681,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                             </div>
                         )}
                     </div>
-                     <div className="form-group-inline">
+                     <div className="form-group">
                         <label>Тип</label>
                         <select value={newItem.type} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewItem({...newItem, type: e.target.value as 'Работа' | 'Материал'})} disabled={isSaving}>
                             <option>Работа</option>
@@ -689,16 +689,16 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                         </select>
                     </div>
                     <div className="d-flex gap-1">
-                        <div className="form-group-inline w-100">
+                        <div className="form-group w-100">
                            <label>Количество</label>
                            <input type="number" step="any" value={newItem.quantity} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewItem({...newItem, quantity: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
                         </div>
-                        <div className="form-group-inline w-100">
+                        <div className="form-group w-100">
                            <label>Ед. изм.</label>
                            <input type="text" value={newItem.unit} placeholder="шт, м², час" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewItem({...newItem, unit: e.target.value})} required disabled={isSaving}/>
                         </div>
                     </div>
-                    <div className="form-group-inline">
+                    <div className="form-group">
                         <label>Цена за единицу</label>
                         <input type="number" step="0.01" value={newItem.price} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewItem({...newItem, price: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
                     </div>
@@ -866,21 +866,21 @@ const ExpenseTracker = ({ project, projects, setProjects, userKey }: ExpenseTrac
                     <button className={entryType === 'payment' ? 'active' : ''} onClick={() => setEntryType('payment')}>Платеж</button>
                 </div>
                 <form onSubmit={handleAddEntry}>
-                    <div className="form-group-inline">
+                    <div className="form-group">
                         <label>Сумма</label>
                         <input type="number" step="0.01" value={newEntry.amount} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEntry({...newEntry, amount: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
                     </div>
-                     <div className="form-group-inline">
+                     <div className="form-group">
                         <label>Дата</label>
                         <input type="date" value={newEntry.date} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEntry({...newEntry, date: e.target.value})} required disabled={isSaving}/>
                     </div>
                     {entryType === 'expense' && (
                         <>
-                            <div className="form-group-inline">
+                            <div className="form-group">
                                 <label>Описание</label>
                                 <input type="text" value={newEntry.description} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEntry({...newEntry, description: e.target.value})} placeholder="Например, материалы с рынка" required disabled={isSaving}/>
                             </div>
-                            <div className="form-group-inline">
+                            <div className="form-group">
                                 <label>Фото чека</label>
                                 <input type="file" accept="image/*" onChange={handleFileChange} disabled={isSaving}/>
                             </div>
@@ -1004,15 +1004,15 @@ const PhotoReports = ({ project, projects, setProjects, userKey }: PhotoReportsP
             )}
             <Modal show={showModal} onClose={() => !isSaving && setShowModal(false)} title="Добавить фотоотчет">
                 <form onSubmit={handleAddReport}>
-                    <div className="form-group-inline">
+                    <div className="form-group">
                         <label>Фотография</label>
                         <input type="file" accept="image/*" onChange={handleFileChange} required disabled={isSaving} />
                     </div>
-                    <div className="form-group-inline">
+                    <div className="form-group">
                         <label>Описание</label>
                         <input type="text" value={newReport.description} onChange={e => setNewReport({ ...newReport, description: e.target.value })} placeholder="Например, укладка плитки" required disabled={isSaving} />
                     </div>
-                    <div className="form-group-inline">
+                    <div className="form-group">
                         <label>Дата</label>
                         <input type="date" value={newReport.date} onChange={e => setNewReport({ ...newReport, date: e.target.value })} required disabled={isSaving} />
                     </div>
@@ -1077,19 +1077,19 @@ const ProjectEditModal = ({ project, projects, show, onClose, setProjects, userK
     return (
         <Modal show={show} onClose={() => !isSaving && onClose()} title="Редактировать проект">
             <form onSubmit={handleSave}>
-                <div className="form-group-inline">
+                <div className="form-group">
                     <label>Название проекта</label>
                     <input type="text" value={editedProject.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, name: e.target.value })} required disabled={isSaving}/>
                 </div>
-                 <div className="form-group-inline">
+                 <div className="form-group">
                     <label>Адрес</label>
                     <input type="text" value={editedProject.address} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, address: e.target.value })} required disabled={isSaving}/>
                 </div>
-                 <div className="form-group-inline">
+                 <div className="form-group">
                     <label>Имя клиента</label>
                     <input type="text" value={editedProject.clientName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, clientName: e.target.value })} required disabled={isSaving}/>
                 </div>
-                 <div className="form-group-inline">
+                 <div className="form-group">
                     <label>Телефон клиента</label>
                     <input type="tel" value={editedProject.clientPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, clientPhone: e.target.value })} required disabled={isSaving}/>
                 </div>
@@ -1389,19 +1389,19 @@ const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfil
     return (
         <Modal show={show} onClose={() => !isSaving && onClose()} title="Новый проект">
             <form onSubmit={handleCreateProject}>
-                <div className="form-group-inline">
+                <div className="form-group">
                     <label>Название проекта</label>
                     <input type="text" placeholder="Ремонт квартиры на Лесной" value={newProject.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, name: e.target.value })} required disabled={isSaving}/>
                 </div>
-                 <div className="form-group-inline">
+                 <div className="form-group">
                     <label>Адрес</label>
                     <input type="text" placeholder="г. Москва, ул. Лесная, д. 5, кв. 10" value={newProject.address} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, address: e.target.value })} required disabled={isSaving}/>
                 </div>
-                 <div className="form-group-inline">
+                 <div className="form-group">
                     <label>Имя клиента</label>
                     <input type="text" placeholder="Иван Петров" value={newProject.clientName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, clientName: e.target.value })} required disabled={isSaving}/>
                 </div>
-                 <div className="form-group-inline">
+                 <div className="form-group">
                     <label>Телефон клиента</label>
                     <input type="tel" placeholder="+7 (999) 123-45-67" value={newProject.clientPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, clientPhone: e.target.value })} required disabled={isSaving}/>
                 </div>
@@ -1464,7 +1464,7 @@ const ProfileModal = ({ show, onClose, profile, setProfile, userKey }: ProfileMo
     return (
         <Modal show={show} onClose={() => !isSaving && onClose()} title="Профиль исполнителя">
             <form onSubmit={handleSave}>
-                <div className="form-group-inline logo-upload-section">
+                <div className="form-group">
                      <label>Логотип</label>
                     <div className="d-flex align-center gap-1">
                         <div className="logo-preview-container">
@@ -1482,15 +1482,15 @@ const ProfileModal = ({ show, onClose, profile, setProfile, userKey }: ProfileMo
                     </div>
                 </div>
 
-                <div className="form-group-inline">
+                <div className="form-group">
                     <label>Название компании</label>
                     <input type="text" placeholder="ИП Петров / Бригада 'Мастер'" value={formData.companyName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, companyName: e.target.value })} disabled={isSaving}/>
                 </div>
-                <div className="form-group-inline">
+                <div className="form-group">
                     <label>Контактное лицо</label>
                     <input type="text" placeholder="Иван Петров" value={formData.contactName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, contactName: e.target.value })} disabled={isSaving}/>
                 </div>
-                <div className="form-group-inline">
+                <div className="form-group">
                     <label>Телефон</label>
                     <input type="tel" placeholder="+7 (999) 123-45-67" value={formData.phone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, phone: e.target.value })} disabled={isSaving}/>
                 </div>
@@ -1857,13 +1857,19 @@ const AuthScreen = ({ onLoginSuccess }: AuthScreenProps) => {
                 
                 <form onSubmit={handleSubmit}>
                     {error && <p className="auth-error">{error}</p>}
-                    <div className="form-group-icon">
-                        <EmailIcon />
-                        <input type="email" placeholder="Email" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)} required disabled={isLoading}/>
+                    <div className="form-group">
+                        <label htmlFor="auth-email">Email</label>
+                        <div className="form-group-icon">
+                            <EmailIcon />
+                            <input id="auth-email" type="email" placeholder="email@example.com" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)} required disabled={isLoading}/>
+                        </div>
                     </div>
-                    <div className="form-group-icon">
-                        <LockIcon />
-                        <input type="password" placeholder="Пароль" value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)} required disabled={isLoading}/>
+                    <div className="form-group">
+                        <label htmlFor="auth-password">Пароль</label>
+                        <div className="form-group-icon">
+                            <LockIcon />
+                            <input id="auth-password" type="password" placeholder="••••••••" value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)} required disabled={isLoading}/>
+                        </div>
                     </div>
                     <button type="submit" className="btn btn-primary w-100" disabled={isLoading}>
                         {isLoading ? <Loader /> : (isLogin ? 'Войти' : 'Создать аккаунт')}
@@ -2018,22 +2024,22 @@ const DirectoryEditModal = ({ show, onClose, item, onSave }: DirectoryEditModalP
     return (
         <Modal show={show} onClose={onClose} title="Редактировать справочник">
             <form onSubmit={handleFormSave}>
-                <div className="form-group-inline">
+                <div className="form-group">
                     <label>Наименование</label>
                     <input type="text" value={editedItem.name} onChange={e => setEditedItem({...editedItem, name: e.target.value})} required disabled={isSaving}/>
                 </div>
-                <div className="form-group-inline">
+                <div className="form-group">
                     <label>Тип</label>
                     <select value={editedItem.type} onChange={e => setEditedItem({...editedItem, type: e.target.value as 'Работа' | 'Материал'})} disabled={isSaving}>
                         <option>Работа</option>
                         <option>Материал</option>
                     </select>
                 </div>
-                 <div className="form-group-inline">
+                 <div className="form-group">
                    <label>Ед. изм.</label>
                    <input type="text" value={editedItem.unit} onChange={e => setEditedItem({...editedItem, unit: e.target.value})} required disabled={isSaving}/>
                 </div>
-                <div className="form-group-inline">
+                <div className="form-group">
                     <label>Цена</label>
                     <input type="number" step="0.01" value={editedItem.price} onChange={e => setEditedItem({...editedItem, price: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
                 </div>

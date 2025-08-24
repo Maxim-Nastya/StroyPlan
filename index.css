@@ -375,6 +375,20 @@ main {
 }
 
 /* 6.4 Form */
+.form-group {
+    margin-bottom: var(--space-5);
+}
+.form-group label {
+    display: block;
+    font-weight: 500;
+    font-size: var(--text-sm);
+    color: hsl(var(--text-primary));
+    margin-bottom: var(--space-2);
+}
+.form-group .d-flex {
+    margin-bottom: calc(var(--space-5) * -1); /* Counteract child form-group margin */
+}
+
 input, select, textarea {
     width: 100%;
     padding: var(--space-3);
@@ -383,11 +397,12 @@ input, select, textarea {
     font-size: var(--text-base);
     font-family: var(--font-family);
     transition: var(--transition-fast);
-    background-color: var(--surface);
+    background-color: hsl(var(--surface-muted));
 }
 input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: hsl(var(--primary));
+    background-color: var(--surface);
     box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
 }
 input:disabled, select:disabled, textarea:disabled {
@@ -404,30 +419,6 @@ input:disabled, select:disabled, textarea:disabled {
     padding-top: var(--space-5);
     border-top: 1px solid var(--border-color);
 }
-
-.form-group-inline {
-    display: grid;
-    grid-template-columns: 140px 1fr;
-    gap: var(--space-4);
-    align-items: center;
-    margin-bottom: var(--space-4);
-}
-.form-group-inline label {
-    font-weight: 500;
-    font-size: var(--text-sm);
-    color: hsl(var(--text-secondary));
-    text-align: right;
-    padding-right: var(--space-4);
-}
-.form-group-inline.logo-upload-section {
-    align-items: flex-start;
-}
-.form-group-inline.logo-upload-section > div {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-}
-
 
 /* 6.5 Table & Lists */
 .table-container { 
@@ -585,7 +576,7 @@ tbody tr:hover {
 .autocomplete-suggestions {
     position: absolute;
     top: 100%;
-    left: 140px; /* Aligns with input field in form-group-inline */
+    left: 0;
     right: 0;
     background-color: var(--surface);
     border: 1px solid var(--border-color);
@@ -645,7 +636,6 @@ tbody tr:hover {
 }
 .form-group-icon {
     position: relative;
-    margin-bottom: var(--space-4);
 }
 .form-group-icon svg {
     position: absolute;
@@ -1113,17 +1103,6 @@ tbody tr:hover {
 }
 
 @media (max-width: 480px) {
-    .form-group-inline {
-        grid-template-columns: 1fr;
-        gap: var(--space-2);
-    }
-    .form-group-inline label {
-        text-align: left;
-        padding-right: 0;
-    }
-    .autocomplete-suggestions {
-      left: 0;
-    }
     .form-actions {
         flex-direction: column;
     }
