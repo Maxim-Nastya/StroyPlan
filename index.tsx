@@ -1,6 +1,16 @@
-
 import React, { useState, useEffect, useMemo, createContext, useContext, useCallback, Dispatch, SetStateAction } from 'react';
 import { createRoot } from 'react-dom/client';
+
+// --- PWA Service Worker Registration ---
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(registration => {
+      console.log('Service Worker registered: ', registration);
+    }).catch(registrationError => {
+      console.log('Service Worker registration failed: ', registrationError);
+    });
+  });
+}
 
 // --- ICONS ---
 const EditIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 17.25V21H6.75L17.81 9.94L14.06 6.19L3 17.25ZM20.71 7.04C21.1 6.65 21.1 6.02 20.71 5.63L18.37 3.29C17.98 2.9 17.35 2.9 16.96 3.29L15.13 5.12L18.88 8.87L20.71 7.04Z" fill="currentColor"/></svg>;
@@ -15,6 +25,7 @@ const EmailIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="no
 const LockIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 8H17V6C17 3.24 14.76 1 12 1C9.24 1 7 3.24 7 6V8H6C4.9 8 4 8.9 4 10V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V10C20 8.9 19.1 8 18 8ZM12 17C10.9 17 10 16.1 10 15C10 13.9 10.9 13 12 13C13.1 13 14 13.9 14 15C14 16.1 13.1 17 12 17ZM15.1 8H8.9V6C8.9 4.29 10.29 2.9 12 2.9C13.71 2.9 15.1 4.29 15.1 6V8Z" fill="currentColor"/></svg>;
 const ReportsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 9.2H8V19H5V9.2ZM10.6 5H13.4V19H10.6V5ZM16.2 13H19V19H16.2V13Z" fill="currentColor"/></svg>;
 const DirectoryIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V4C20 2.9 19.1 2 18 2ZM6 4H11V12L8.5 10.5L6 12V4Z" fill="currentColor"/></svg>;
+const ProjectsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3L2 12h3v8h14v-8h3L12 3zm0 15c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" fill="currentColor"/><path d="M0 0h24v24H0z" fill="none"/></svg>;
 
 
 // --- DATA TYPES ---
@@ -85,7 +96,7 @@ interface Project {
 }
 
 // --- HOOK FOR LOCALSTORAGE ---
-const useLocalStorage = <T>(key: string, initialValue: T): [T, Dispatch<SetStateAction<T>>] => {
+const useLocalStorage = <T,>(key: string, initialValue: T): [T, Dispatch<SetStateAction<T>>] => {
     const [storedValue, setStoredValue] = useState<T>(() => {
         if (typeof window === 'undefined') {
             return initialValue;
@@ -130,10 +141,10 @@ const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reje
 
 // --- SIMULATED API ---
 const api = {
-    _get: function<T>(key: string, defaultValue: T): T {
+    _get: function<T,>(key: string, defaultValue: T): T {
         return JSON.parse(localStorage.getItem(key) || JSON.stringify(defaultValue));
     },
-    _set: function<T>(key: string, value: T) {
+    _set: function<T,>(key: string, value: T) {
         localStorage.setItem(key, JSON.stringify(value));
     },
     _delay: function(ms = 500) {
@@ -192,7 +203,7 @@ const api = {
         return { projects, directory, profile };
     },
 
-    async saveData<T>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T): Promise<void> {
+    async saveData<T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile', data: T): Promise<void> {
         await this._delay();
         this._set(`prorab_${dataType}_${userKey}`, data);
     }
@@ -1659,7 +1670,10 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
     }, [projects, selectedProjectId]);
     
     const handleSelectProject = (id: string) => setSelectedProjectId(id);
-    const handleBackToProjects = () => setSelectedProjectId(null);
+    const handleBackToProjects = () => {
+        setSelectedProjectId(null);
+        setCurrentView('projects');
+    };
     const handleViewChange = (view: 'projects' | 'reports' | 'directory') => {
         setCurrentView(view);
         setSelectedProjectId(null); // Reset project selection when switching views
@@ -1720,6 +1734,34 @@ const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
                     />
                  )}
             </main>
+
+            <nav className="bottom-nav">
+                <button
+                    className={`bottom-nav-btn ${currentView === 'projects' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('projects')}
+                    aria-label="Проекты"
+                >
+                    <ProjectsIcon />
+                    <span>Проекты</span>
+                </button>
+                <button
+                    className={`bottom-nav-btn ${currentView === 'directory' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('directory')}
+                    aria-label="Справочник"
+                >
+                    <DirectoryIcon />
+                    <span>Справочник</span>
+                </button>
+                <button
+                    className={`bottom-nav-btn ${currentView === 'reports' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('reports')}
+                    aria-label="Отчеты"
+                >
+                    <ReportsIcon />
+                    <span>Отчеты</span>
+                </button>
+            </nav>
+
             <ProjectCreationModal 
                 show={showNewProjectModal} 
                 onClose={() => setShowNewProjectModal(false)} 

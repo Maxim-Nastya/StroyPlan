@@ -1,4 +1,3 @@
-
 /* 1. Design System: Foundation */
 :root {
     /* Semantic Color Palette (HSL) */
@@ -813,7 +812,7 @@ tbody tr:hover {
     padding-left: var(--space-4);
 }
 
-/* 7. Accessibility */
+/* 7. Accessibility & Mobile */
 @media (prefers-reduced-motion: reduce) {
     * {
       animation-duration: 0.01ms !important;
@@ -822,11 +821,81 @@ tbody tr:hover {
     }
 }
 
+.bottom-nav {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .app-container {
+        padding-bottom: 80px; /* Space for bottom nav */
+    }
+
+    .fab {
+        bottom: 80px; /* Adjust FAB position */
+    }
+
+    header .header-actions .settings-btn[aria-label="Справочник"],
+    header .header-actions .settings-btn[aria-label="Отчеты"] {
+        display: none; /* Hide desktop nav icons on mobile */
+    }
+
+    .bottom-nav {
+        display: flex;
+        justify-content: space-around;
+        align-items: stretch; /* Stretch items to fill height */
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 65px; /* A bit taller for touch targets */
+        background-color: hsla(var(--surface), 0.85);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-top: 1px solid hsl(var(--border));
+        z-index: 1001;
+        padding: 0 var(--space-2);
+        padding-bottom: env(safe-area-inset-bottom, 0); /* iPhone notch support */
+    }
+
+    .bottom-nav-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: hsl(var(--text-secondary));
+        flex-grow: 1;
+        height: 100%;
+        font-size: 11px;
+        gap: 2px;
+        cursor: pointer;
+        transition: var(--transition-smooth);
+        border-radius: var(--border-radius-sm);
+        padding: var(--space-2) 0;
+    }
+
+    .bottom-nav-btn.active {
+        color: hsl(var(--primary-dark));
+        background-color: hsl(var(--primary-hue), 80%, 95%);
+    }
+
+    .bottom-nav-btn:active {
+        transform: scale(0.95);
+    }
+
+    .bottom-nav-btn svg {
+        width: 24px;
+        height: 24px;
+        margin-bottom: 2px;
+    }
+}
+
 /* 8. Print Styles */
 @media print {
     body { background-color: #fff; background-image: none; }
     header, .fab, .back-button, .project-header-actions, .item-actions, .form-actions button, .modal-overlay,
-    .print-button, .public-footer, .btn, .action-btn, .settings-btn, .estimate-summary-container .discount-controls, .reports-header { display: none !important; }
+    .print-button, .public-footer, .btn, .action-btn, .settings-btn, .estimate-summary-container .discount-controls, .reports-header, .bottom-nav { display: none !important; }
     .app-container, .public-estimate-container { max-width: 100%; padding: 0; margin: 0; }
     .card, .report-card { box-shadow: none; border: 1px solid #ccc; padding: 1rem; page-break-inside: avoid; border-radius: 0; }
     h1, h2, h3 { color: #000; }

@@ -1,0 +1,16 @@
+{
+  "short_name": "Прораб",
+  "name": "Прораб - Помощник на объекте",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#f8f9fa",
+  "description": "SaaS-приложение для малых строительных и ремонтных бригад."
+}
