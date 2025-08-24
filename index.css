@@ -284,6 +284,7 @@ main {
 .btn-sm {
     padding: var(--space-2) var(--space-4);
     font-size: var(--text-sm);
+    line-height: 1;
 }
 
 .btn-large {
@@ -350,8 +351,8 @@ main {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: hsla(var(--primary-hue), 30%, 15%, 0.6);
-    backdrop-filter: blur(5px);
+    background-color: hsla(var(--primary-hue), 30%, 15%, 0.85);
+    backdrop-filter: blur(8px);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -410,10 +411,52 @@ main {
 }
 .form-actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
     gap: var(--space-4);
-    margin-top: var(--space-6);
+    margin-top: var(--space-8);
+    padding-top: var(--space-6);
+    border-top: 1px solid hsl(var(--border));
 }
+
+.form-group-inline {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: var(--space-4);
+    align-items: center;
+    margin-bottom: var(--space-4);
+}
+.form-group-inline label {
+    font-weight: 500;
+    font-size: var(--text-sm);
+    color: hsl(var(--text-secondary));
+    text-align: right;
+    padding-right: var(--space-4);
+}
+.form-group-inline input, .form-group-inline select {
+    width: 100%;
+    padding: var(--space-3);
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--border-radius-sm);
+    font-size: var(--text-base);
+    font-family: var(--font-family);
+    transition: var(--transition-smooth);
+    background-color: hsl(var(--surface-muted));
+}
+.form-group-inline input:focus, .form-group-inline select:focus {
+    outline: none;
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.2);
+    background-color: var(--surface);
+}
+.form-group-inline.logo-upload-section {
+    align-items: flex-start;
+}
+.form-group-inline.logo-upload-section > div {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
 
 /* 6.5 Table & Lists */
 .table-container { overflow-x: auto; }
@@ -553,7 +596,7 @@ tbody tr:hover {
 }
 
 .logo-upload-section { display: flex; align-items: center; gap: var(--space-6); }
-.logo-preview, .logo-placeholder { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid hsl(var(--border)); }
+.logo-preview, .logo-placeholder { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid hsl(var(--border)); }
 .logo-placeholder { display: flex; align-items: center; justify-content: center; background-color: hsl(var(--surface-muted)); color: hsl(var(--text-secondary)); }
 .field-hint { font-size: var(--text-sm); color: hsl(var(--text-secondary)); margin-top: var(--space-2); }
 
@@ -1074,6 +1117,17 @@ tbody tr:hover {
         width: 24px;
         height: 24px;
         margin-bottom: 2px;
+    }
+}
+
+@media (max-width: 480px) {
+    .form-group-inline {
+        grid-template-columns: 1fr;
+        gap: var(--space-2);
+    }
+    .form-group-inline label {
+        text-align: left;
+        padding-right: 0;
     }
 }
 
