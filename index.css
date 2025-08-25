@@ -342,29 +342,27 @@ main {
 /* 6.3 Modal */
 .modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
     background-color: hsla(var(--primary-hue), 20%, 10%, 0.5);
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start; /* Align modals to the top */
     z-index: 2000;
     animation: fade-slide-up 0.3s forwards;
+    overflow-y: auto; /* Allow scrolling the entire overlay */
+    padding: var(--space-8) var(--space-4); /* Add generous vertical padding */
 }
 
 .modal-content {
     background-color: hsl(var(--surface));
     padding: var(--space-6);
     border-radius: var(--border-radius);
-    width: 90%;
+    width: 100%;
     max-width: 500px;
     box-shadow: var(--shadow-md);
     border: 1px solid var(--border-color);
-    max-height: 90vh;
-    overflow-y: auto;
     animation: fade-slide-up 0.4s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+    margin-bottom: auto; /* Prevent stretching on some flex implementations */
 }
 
 .modal-header {
@@ -1262,6 +1260,12 @@ tbody tr:hover {
     }
     .date-filter-container span {
         display: none;
+    }
+    .modal-overlay {
+        padding: var(--space-4) var(--space-2);
+    }
+    .modal-content {
+        padding: var(--space-5);
     }
 }
 
