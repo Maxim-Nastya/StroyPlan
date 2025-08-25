@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
-import type { ToastMessage, PhotoReport } from './types';
+import type { ToastMessage, PhotoReport, User, ViewState } from './types';
+import { DirectoryIcon, LogoIcon, LogoutIcon, ProjectsIcon, ReportsIcon, SettingsIcon, ToolIcon } from './icons';
 
 // --- UI COMPONENTS ---
 
@@ -126,5 +127,49 @@ export const PhotoViewerModal = ({ show, onClose, images, startIndex }: PhotoVie
             </div>
             <button className="photo-viewer-nav-btn next" aria-label="Следующее фото" onClick={(e) => { e.stopPropagation(); goToNext(); }}>&#10095;</button>
         </div>
+    );
+};
+
+export const Header = ({ onNavigate, onLogout }: { user: User | null, onNavigate: (view: ViewState) => void, onLogout: () => void }) => {
+    return (
+        <header>
+            <div className="header-content">
+                 <a href="#" onClick={(e) => { e.preventDefault(); onNavigate({ view: 'projects' }); }} className="header-logo" aria-label="На главную">
+                    <LogoIcon />
+                    <span>Прораб</span>
+                </a>
+                <div className="header-actions">
+                     <button className="settings-btn" onClick={() => onNavigate({ view: 'reports' })} aria-label="Отчеты"><ReportsIcon /></button>
+                     <button className="settings-btn" onClick={() => onNavigate({ view: 'directory' })} aria-label="Справочник"><DirectoryIcon /></button>
+                     <button className="settings-btn" onClick={() => onNavigate({ view: 'inventory' })} aria-label="Инвентарь"><ToolIcon /></button>
+                     <button className="settings-btn" onClick={() => onNavigate({ view: 'settings' })} aria-label="Настройки"><SettingsIcon /></button>
+                     <button className="settings-btn" onClick={onLogout} aria-label="Выход"><LogoutIcon /></button>
+                </div>
+            </div>
+        </header>
+    );
+};
+
+export const BottomNav = ({ currentView, onNavigate }: { currentView: ViewState['view'], onNavigate: (view: ViewState) => void }) => {
+    const navItems = [
+        { view: 'projects' as const, label: 'Проекты', icon: <ProjectsIcon /> },
+        { view: 'reports' as const, label: 'Отчеты', icon: <ReportsIcon /> },
+        { view: 'directory' as const, label: 'Справочник', icon: <DirectoryIcon /> },
+        { view: 'inventory' as const, label: 'Инвентарь', icon: <ToolIcon /> },
+    ];
+
+    return (
+        <nav className="bottom-nav">
+            {navItems.map(item => (
+                <button
+                    key={item.view}
+                    className={`bottom-nav-btn ${currentView === item.view ? 'active' : ''}`}
+                    onClick={() => onNavigate({ view: item.view })}
+                >
+                    {item.icon}
+                    <span>{item.label}</span>
+                </button>
+            ))}
+        </nav>
     );
 };

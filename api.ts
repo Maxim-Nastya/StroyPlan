@@ -15,18 +15,13 @@ const _delay = (ms = 500) => {
 };
 
 // --- SIMULATED API ---
-export const api: {
-    login: (email: string, password: string) => Promise<User>;
-    register: (email: string, password: string) => Promise<User>;
-    getData: (userKey: string) => Promise<{ projects: Project[]; directory: DirectoryItem[]; profile: UserProfile; templates: EstimateTemplate[]; inventory: InventoryItem[]; inventoryNotes: ProjectNote[]; }>;
-    saveData: <T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory' | 'inventory_notes', data: T) => Promise<void>;
-} = {
+export const api = {
     async login(email: string, password: string): Promise<User> {
         await _delay();
         const users = _get<User[]>('prorab_users', []);
         const user = users.find(u => u.email === email);
         if (user && user.password === password) {
-            return { email: user.email };
+            return user;
         }
         throw new Error('Неверный email или пароль.');
     },
@@ -37,13 +32,21 @@ export const api: {
         if (users.some(u => u.email === email)) {
             throw new Error('Пользователь с таким email уже существует.');
         }
-        const newUser: User = { email, password };
+        const newUser: User = { 
+            email, 
+            password,
+            trialEndsAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+        };
         _set('prorab_users', [...users, newUser]);
-        return { email: newUser.email };
+        return newUser;
     },
 
-    async getData(userKey: string): Promise<{ projects: Project[], directory: DirectoryItem[], profile: UserProfile, templates: EstimateTemplate[], inventory: InventoryItem[], inventoryNotes: ProjectNote[] }> {
+    async getData(userKey: string): Promise<{ user: User, projects: Project[], directory: DirectoryItem[], profile: UserProfile, templates: EstimateTemplate[], inventory: InventoryItem[], inventoryNotes: ProjectNote[] }> {
         await _delay(800);
+
+        const users = _get<User[]>('prorab_users', []);
+        const user = users.find(u => u.email === userKey) as User;
+
         let projects = _get<Project[]>(`prorab_projects_${userKey}`, []);
         let directory = _get<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
         const profile = _get<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
@@ -141,27 +144,77 @@ export const api: {
             return { ...p, estimates: syncedEstimates };
         });
 
-        return { projects, directory, profile, templates, inventory, inventoryNotes };
+        return { user, projects, directory, profile, templates, inventory, inventoryNotes };
     },
 
-    async saveData<T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory' | 'inventory_notes', data: T): Promise<void> {
+    async saveProjects(userKey: string, data: Project[]): Promise<void> {
         await _delay();
-        const key = `prorab_${dataType}_${userKey}`;
+        const key = `prorab_projects_${userKey}`;
         _set(key, data);
     
         // If projects are updated, we must also update the aggregated 'all_projects' key
         // to ensure share links work immediately with the latest data.
-        if (dataType === 'projects') {
-            const otherProjectKeys = Object.keys(localStorage)
-                .filter(k => k.startsWith('prorab_projects_') && k !== key && k !== 'prorab_projects_all');
-            
-            let combinedProjects = [...(data as Project[])];
-            for (const otherKey of otherProjectKeys) {
-                combinedProjects = [...combinedProjects, ..._get<Project[]>(otherKey, [])];
-            }
-             // Deduplicate in case of any overlap
-            const uniqueProjects = Array.from(new Map(combinedProjects.map(p => [p.id, p])).values());
-            _set('prorab_projects_all', uniqueProjects);
+        const otherProjectKeys = Object.keys(localStorage)
+            .filter(k => k.startsWith('prorab_projects_') && k !== key && k !== 'prorab_projects_all');
+        
+        let combinedProjects = [...data];
+        for (const otherKey of otherProjectKeys) {
+            combinedProjects = [...combinedProjects, ..._get<Project[]>(otherKey, [])];
         }
+         // Deduplicate in case of any overlap
+        const uniqueProjects = Array.from(new Map(combinedProjects.map(p => [p.id, p])).values());
+        _set('prorab_projects_all', uniqueProjects);
+    },
+
+    async saveDirectory(userKey: string, data: DirectoryItem[]): Promise<void> {
+        await _delay();
+        _set(`prorab_directory_${userKey}`, data);
+    },
+
+    async saveProfile(userKey: string, data: UserProfile): Promise<void> {
+        await _delay();
+        _set(`prorab_profile_${userKey}`, data);
+    },
+
+    async saveTemplates(userKey: string, data: EstimateTemplate[]): Promise<void> {
+        await _delay();
+        _set(`prorab_templates_${userKey}`, data);
+    },
+
+    async saveInventory(userKey: string, data: InventoryItem[]): Promise<void> {
+        await _delay();
+        _set(`prorab_inventory_${userKey}`, data);
+    },
+    
+    async saveInventoryNotes(userKey: string, data: ProjectNote[]): Promise<void> {
+        await _delay();
+        _set(`prorab_inventory_notes_${userKey}`, data);
+    },
+    
+    async activateSubscription(userKey: string): Promise<User> {
+        await _delay(1000);
+        const users = _get<User[]>('prorab_users', []);
+        let updatedUser: User | null = null;
+        const updatedUsers = users.map(u => {
+            if (u.email === userKey) {
+                // If current subscription is expired, start new one from today.
+                // Otherwise, extend the existing one.
+                const now = new Date();
+                const currentSubEnd = u.subscriptionEndsAt ? new Date(u.subscriptionEndsAt) : now;
+                const startDate = currentSubEnd > now ? currentSubEnd : now;
+
+                updatedUser = { 
+                    ...u, 
+                    subscriptionEndsAt: new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() 
+                };
+                return updatedUser;
+            }
+            return u;
+        });
+        _set('prorab_users', updatedUsers);
+        if (updatedUser) {
+            return updatedUser;
+        }
+        throw new Error('Пользователь не найден');
     }
 };

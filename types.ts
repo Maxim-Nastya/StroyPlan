@@ -2,6 +2,8 @@
 export interface User {
     email: string;
     password?: string; // Should be hashed in a real app
+    trialEndsAt?: string; // ISO Date string
+    subscriptionEndsAt?: string; // ISO Date string
 }
 
 export interface Client {
@@ -174,4 +176,11 @@ export interface EstimateEditorProps {
     templates: EstimateTemplate[];
     onSaveTemplate: (template: EstimateTemplate) => Promise<void>;
     onDeleteTemplate: (templateId: string) => Promise<void>;
+}
+
+export interface SettingsViewProps {
+    user: User;
+    profile: UserProfile;
+    onSave: (profile: UserProfile) => Promise<void>;
+    onLogout: () => void;
 }
