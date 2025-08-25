@@ -1171,6 +1171,57 @@ const ExpenseTracker = ({ project, projects, setProjects, userKey }: ExpenseTrac
     );
 };
 
+interface PhotoViewerModalProps {
+    show: boolean;
+    onClose: () => void;
+    images: PhotoReport[];
+    startIndex: number;
+}
+const PhotoViewerModal = ({ show, onClose, images, startIndex }: PhotoViewerModalProps) => {
+    const [currentIndex, setCurrentIndex] = useState(startIndex);
+
+    useEffect(() => {
+        if (show) {
+            setCurrentIndex(startIndex);
+        }
+    }, [show, startIndex]);
+
+    const goToPrevious = useCallback(() => {
+        setCurrentIndex(prevIndex => (prevIndex === 0 ? images.length - 1 : prevIndex - 1));
+    }, [images.length]);
+
+    const goToNext = useCallback(() => {
+        setCurrentIndex(prevIndex => (prevIndex === images.length - 1 ? 0 : prevIndex + 1));
+    }, [images.length]);
+
+    useEffect(() => {
+        if (!show) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'ArrowRight') goToNext();
+            else if (e.key === 'ArrowLeft') goToPrevious();
+            else if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [show, goToNext, goToPrevious, onClose]);
+
+    if (!show || images.length === 0) return null;
+
+    const currentImage = images[currentIndex];
+
+    return (
+        <div className="photo-viewer-overlay" onClick={onClose}>
+            <button className="photo-viewer-close-btn" aria-label="Закрыть" onClick={onClose}>&times;</button>
+            <button className="photo-viewer-nav-btn prev" aria-label="Предыдущее фото" onClick={(e) => { e.stopPropagation(); goToPrevious(); }}>&#10094;</button>
+            <div className="photo-viewer-content" onClick={(e) => e.stopPropagation()}>
+                <img src={currentImage.image} alt={currentImage.description} />
+                {currentImage.description && <p className="photo-viewer-description">{currentImage.description}</p>}
+            </div>
+            <button className="photo-viewer-nav-btn next" aria-label="Следующее фото" onClick={(e) => { e.stopPropagation(); goToNext(); }}>&#10095;</button>
+        </div>
+    );
+};
+
 interface PhotoReportsProps {
     project: Project;
     projects: Project[];
@@ -1184,7 +1235,19 @@ const PhotoReports = ({ project, projects, setProjects, userKey }: PhotoReportsP
     const [isSaving, setIsSaving] = useState(false);
     const { addToast } = useToasts();
     
+    const [isViewerOpen, setIsViewerOpen] = useState(false);
+    const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
     const photoReports = project.photoReports || [];
+
+    const openViewer = (index: number) => {
+        setCurrentImageIndex(index);
+        setIsViewerOpen(true);
+    };
+
+    const closeViewer = () => {
+        setIsViewerOpen(false);
+    };
 
     const handleAddReport = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -1257,14 +1320,14 @@ const PhotoReports = ({ project, projects, setProjects, userKey }: PhotoReportsP
                 <div className="transaction-list-empty">Фотоотчетов пока нет.</div>
             ) : (
                 <div className="photo-reports-grid">
-                    {photoReports.map(report => (
-                        <div key={report.id} className="photo-report-card">
+                    {photoReports.map((report, index) => (
+                        <div key={report.id} className="photo-report-card" onClick={() => openViewer(index)}>
                             <img src={report.image} alt={report.description} />
                             <div className="photo-report-info">
                                 <p>{report.description}</p>
                                 <small>{new Date(report.date).toLocaleDateString('ru-RU')}</small>
                             </div>
-                            <button className="photo-report-delete-btn action-btn" onClick={() => handleDeleteReport(report.id)} aria-label="Удалить фотоотчет">
+                            <button className="photo-report-delete-btn action-btn" onClick={(e) => { e.stopPropagation(); handleDeleteReport(report.id); }} aria-label="Удалить фотоотчет">
                                 <DeleteIcon />
                             </button>
                         </div>
@@ -1293,6 +1356,12 @@ const PhotoReports = ({ project, projects, setProjects, userKey }: PhotoReportsP
                     </div>
                 </form>
             </Modal>
+            <PhotoViewerModal 
+                show={isViewerOpen}
+                onClose={closeViewer}
+                images={photoReports}
+                startIndex={currentImageIndex}
+            />
         </div>
     );
 };
@@ -1724,6 +1793,20 @@ const ProjectDocuments = ({ documents, onUpdate }: ProjectDocumentsProps) => {
             onUpdate(documents.filter(doc => doc.id !== id));
         }
     };
+    
+    const handleDownload = (fileData: string, fileName: string) => {
+        try {
+            const link = document.createElement('a');
+            link.href = fileData;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error("Download failed:", error);
+            addToast('Не удалось скачать файл', 'error');
+        }
+    };
 
     return (
         <div className="card">
@@ -1738,7 +1821,7 @@ const ProjectDocuments = ({ documents, onUpdate }: ProjectDocumentsProps) => {
                     {documents.map(doc => (
                         <div key={doc.id} className="data-item">
                             <div className="data-item-info">
-                                <a href={doc.file} download={doc.fileName}>{doc.name}</a>
+                                <button className="link-button" onClick={() => handleDownload(doc.file, doc.fileName)}>{doc.name}</button>
                                 <span className="data-item-subtext">{doc.fileName}</span>
                             </div>
                             <div className="item-actions">
