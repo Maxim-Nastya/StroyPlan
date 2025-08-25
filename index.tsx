@@ -323,7 +323,7 @@ const api: {
 
         // This is a workaround for sharing data to the public view
         const allProjects = Object.keys(localStorage)
-            .filter(k => k.startsWith('prorab_projects_'))
+            .filter(k => k.startsWith('prorab_projects_') && k !== 'prorab_projects_all')
             .flatMap(k => JSON.parse(localStorage.getItem(k) || '[]'));
         _set('prorab_projects_all', allProjects);
         
@@ -409,6 +409,17 @@ interface ModalProps {
     children: React.ReactNode;
 }
 const Modal = ({ show, onClose, title, children }: ModalProps) => {
+    useEffect(() => {
+        if (show) {
+            document.body.classList.add('modal-open');
+        } else {
+            document.body.classList.remove('modal-open');
+        }
+        return () => {
+            document.body.classList.remove('modal-open');
+        };
+    }, [show]);
+
     if (!show) return null;
 
     return (
@@ -1659,7 +1670,7 @@ const ProjectDocuments = ({ documents, onUpdate }: ProjectDocumentsProps) => {
                     {documents.map(doc => (
                         <div key={doc.id} className="data-item">
                             <div className="data-item-info">
-                                <a href={doc.file} download={doc.fileName} target="_blank" rel="noopener noreferrer">{doc.name}</a>
+                                <a href={doc.file} download={doc.fileName}>{doc.name}</a>
                                 <span className="data-item-subtext">{doc.fileName}</span>
                             </div>
                             <div className="item-actions">
@@ -2370,7 +2381,7 @@ const PublicEstimateView = () => {
                          {project.documents.map(doc => (
                             <div key={doc.id} className="data-item">
                                 <div className="data-item-info">
-                                    <a href={doc.file} download={doc.fileName} target="_blank" rel="noopener noreferrer">{doc.name}</a>
+                                    <a href={doc.file} download={doc.fileName}>{doc.name}</a>
                                 </div>
                             </div>
                         ))}
@@ -2526,7 +2537,7 @@ const ReportsView = ({ projects, onBack }: ReportsViewProps) => {
             const completedDate = p.completedAt ? new Date(p.completedAt).getTime() : 0;
             return p.status === 'Завершен' && completedDate >= start && completedDate <= end;
         });
-    }, [projects, startDate, setEndDate]);
+    }, [projects, startDate, endDate]);
 
     const stats = useMemo(() => {
         let totalRevenue = 0;
@@ -2858,7 +2869,7 @@ const DirectoryView = ({ directory, setDirectory, userKey, onBack }: DirectoryVi
                             {directory.length === 0 ? (
                                 <tr><td colSpan={4} style={{textAlign: 'center', padding: '1rem'}}>Справочник пуст.</td></tr>
                             ) : (
-                                directory
+                                [...directory]
                                     .sort((a,b) => a.name.localeCompare(b.name))
                                     .map(item => (
                                     <tr key={item.id}>
