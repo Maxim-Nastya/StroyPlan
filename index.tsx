@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, createContext, useContext, useCallback, Dispatch, SetStateAction } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from '@google/genai';
@@ -1351,12 +1352,12 @@ const PhotoReports = ({ project, projects, setProjects, userKey }: PhotoReportsP
                     <div className="form-actions">
                         <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={isSaving}>Отмена</button>
                         <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                            {isSaving ? <Loader /> : 'Добавить'}
+                           {isSaving ? <Loader /> : 'Добавить'}
                         </button>
                     </div>
                 </form>
             </Modal>
-            <PhotoViewerModal 
+            <PhotoViewerModal
                 show={isViewerOpen}
                 onClose={closeViewer}
                 images={photoReports}
@@ -1366,485 +1367,134 @@ const PhotoReports = ({ project, projects, setProjects, userKey }: PhotoReportsP
     );
 };
 
-
-interface ProjectEditModalProps {
+interface ProjectScheduleProps {
     project: Project;
     projects: Project[];
-    show: boolean;
-    onClose: () => void;
     setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
     userKey: string;
 }
-const ProjectEditModal = ({ project, projects, show, onClose, setProjects, userKey }: ProjectEditModalProps) => {
-    const [editedProject, setEditedProject] = useState({ name: '', address: '', clientName: '', clientPhone: '' });
+const ProjectSchedule = ({ project, projects, setProjects, userKey }: ProjectScheduleProps) => {
+    const [showModal, setShowModal] = useState(false);
+    const [newItem, setNewItem] = useState({ name: '', startDate: '', endDate: '' });
     const [isSaving, setIsSaving] = useState(false);
     const { addToast } = useToasts();
     
-    useEffect(() => {
-        if (project) {
-            setEditedProject({
-                name: project.name,
-                address: project.address,
-                clientName: project.client.name,
-                clientPhone: project.client.phone
-            });
-        }
-    }, [project, show]);
+    const schedule = project.schedule || [];
 
-    const handleSave = async (e: React.FormEvent) => {
+    const handleAddItem = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!newItem.name || !newItem.startDate || !newItem.endDate) {
+            addToast('Заполните все поля', 'error');
+            return;
+        }
         setIsSaving(true);
         try {
-            const updatedProjects = projects.map(p => p.id === project.id ? {
-                ...p,
-                name: editedProject.name,
-                address: editedProject.address,
-                client: { name: editedProject.clientName, phone: editedProject.clientPhone }
-            } : p);
+            const itemWithId: ProjectScheduleItem = { ...newItem, id: generateId(), completed: false };
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    const existingSchedule = p.schedule || [];
+                    return { ...p, schedule: [...existingSchedule, itemWithId] };
+                }
+                return p;
+            });
+
             setProjects(updatedProjects);
             await api.saveData(userKey, 'projects', updatedProjects);
-            addToast('Проект сохранен', 'success');
-            onClose();
-        } catch (error) {
-            addToast('Не удалось сохранить проект', 'error');
+            addToast('Этап добавлен в график', 'success');
+            setShowModal(false);
+            setNewItem({ name: '', startDate: '', endDate: '' });
+        } catch (err) {
+            addToast('Не удалось добавить этап', 'error');
         } finally {
             setIsSaving(false);
         }
     };
-
-    return (
-        <Modal show={show} onClose={() => !isSaving && onClose()} title="Редактировать проект">
-            <form onSubmit={handleSave}>
-                <div className="form-group">
-                    <label>Название проекта</label>
-                    <input type="text" value={editedProject.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, name: e.target.value })} required disabled={isSaving}/>
-                </div>
-                 <div className="form-group">
-                    <label>Адрес</label>
-                    <input type="text" value={editedProject.address} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, address: e.target.value })} required disabled={isSaving}/>
-                </div>
-                 <div className="form-group">
-                    <label>Имя клиента</label>
-                    <input type="text" value={editedProject.clientName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, clientName: e.target.value })} required disabled={isSaving}/>
-                </div>
-                 <div className="form-group">
-                    <label>Телефон клиента</label>
-                    <input type="tel" value={editedProject.clientPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedProject({ ...editedProject, clientPhone: e.target.value })} required disabled={isSaving}/>
-                </div>
-                <div className="form-actions">
-                    <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSaving}>Отмена</button>
-                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                        {isSaving ? <Loader/> : 'Сохранить'}
-                    </button>
-                </div>
-            </form>
-        </Modal>
-    );
-};
-
-interface ActGenerationModalProps {
-    show: boolean;
-    onClose: () => void;
-    project: Project | null;
-}
-const ActGenerationModal = ({ show, onClose, project }: ActGenerationModalProps) => {
-    const [generatedAct, setGeneratedAct] = useState('');
-    const [isGenerating, setIsGenerating] = useState(false);
-    const { addToast } = useToasts();
-
-    const handleGenerate = useCallback(async () => {
-        if (!project) return;
-        setIsGenerating(true);
-        setGeneratedAct('');
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            
-            const total = project.estimates.reduce((projectSum, estimate) => {
-                const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
-                const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
-                return projectSum + (subtotal - discountAmount);
-            }, 0);
-
-            const prompt = `
-                Составь официальный документ "Акт сдачи-приемки выполненных работ".
-                Используй следующие данные:
-                - Город: (оставь пустым, если не указан в адресе)
-                - Дата: ${new Date().toLocaleDateString('ru-RU')} г.
-                - Исполнитель: ${project.contractor?.companyName || project.contractor?.contactName || 'Исполнитель'}
-                - Заказчик: ${project.client.name}
-                - Объект: "${project.name}" по адресу ${project.address}
-                - Общая сумма работ по смете: ${formatCurrency(total)} (${new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', currencyDisplay: 'name' }).formatToParts(total).map(p=>p.value).join('')})
-
-                В тексте акта укажи, что исполнитель выполнил все работы в полном объеме и в установленные сроки, а заказчик принял работы и не имеет претензий к качеству и объему.
-                В конце документа оставь места для подписей: "Исполнитель _______________" и "Заказчик _______________".
-                Структурируй документ четко, с заголовком, преамбулой, основной частью и реквизитами сторон.
-            `;
-            
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-            });
-
-            const text = response.text;
-            setGeneratedAct(text);
-
-        } catch (error) {
-            console.error("Gemini API error:", error);
-            addToast('Не удалось сгенерировать акт. Попробуйте позже.', 'error');
-            setGeneratedAct('Произошла ошибка при генерации документа. Проверьте API-ключ и повторите попытку.');
-        } finally {
-            setIsGenerating(false);
-        }
-    }, [project, addToast]);
-
-    useEffect(() => {
-        if (show) {
-            handleGenerate();
-        }
-    }, [show, handleGenerate]);
-
-    const handleCopy = () => {
-        if (!generatedAct) return;
-        navigator.clipboard.writeText(generatedAct).then(() => {
-            addToast('Акт скопирован в буфер обмена!', 'success');
-        }, () => {
-            addToast('Не удалось скопировать текст.', 'error');
-        });
-    };
-
-    return (
-        <Modal show={show} onClose={onClose} title="Генерация Акта выполненных работ">
-            {isGenerating ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem 0' }}>
-                    <Loader />
-                    <p>Нейросеть составляет документ...</p>
-                </div>
-            ) : (
-                <>
-                    <textarea 
-                        className="act-textarea"
-                        value={generatedAct}
-                        onChange={(e) => setGeneratedAct(e.target.value)}
-                        rows={15}
-                        readOnly={isGenerating}
-                    />
-                    <div className="form-actions">
-                        <button type="button" className="btn btn-secondary" onClick={onClose}>Закрыть</button>
-                        <button type="button" className="btn btn-primary" onClick={handleCopy} disabled={!generatedAct}>
-                           Скопировать
-                        </button>
-                    </div>
-                </>
-            )}
-        </Modal>
-    );
-};
-
-
-interface NotesComponentProps {
-    notes: ProjectNote[];
-    onUpdate: (notes: ProjectNote[]) => void;
-    title: string;
-}
-const NotesComponent = ({ notes, onUpdate, title }: NotesComponentProps) => {
-    const [newNoteText, setNewNoteText] = useState('');
-    const [editingNote, setEditingNote] = useState<ProjectNote | null>(null);
-    const [editedText, setEditedText] = useState('');
-    const { addToast } = useToasts();
-
-    const handleAddNote = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newNoteText.trim()) return;
-
-        const newNote: ProjectNote = {
-            id: generateId(),
-            text: newNoteText.trim(),
-            createdAt: new Date().toISOString(),
-        };
-        onUpdate([...notes, newNote]);
-        setNewNoteText('');
-        addToast('Заметка добавлена', 'success');
-    };
-
-    const handleDeleteNote = (id: string) => {
-        if (window.confirm('Удалить эту заметку?')) {
-            onUpdate(notes.filter(note => note.id !== id));
-            addToast('Заметка удалена', 'success');
-        }
-    };
-
-    const openEditModal = (note: ProjectNote) => {
-        setEditingNote(note);
-        setEditedText(note.text);
-    };
-
-    const handleSaveEditedNote = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!editingNote || !editedText.trim()) return;
-
-        const updatedNotes = notes.map(note =>
-            note.id === editingNote.id ? { ...note, text: editedText.trim() } : note
-        );
-        onUpdate(updatedNotes);
-        setEditingNote(null);
-        addToast('Заметка обновлена', 'success');
-    };
-
-    return (
-        <div className="card">
-            <h3>{title}</h3>
-            {notes.length === 0 ? (
-                <div className="transaction-list-empty">Заметок пока нет.</div>
-            ) : (
-                <div className="data-list">
-                    {notes.map(note => (
-                        <div key={note.id} className="data-item">
-                            <div className="data-item-info">
-                                <p>{note.text}</p>
-                            </div>
-                            <div className="item-actions">
-                                <button className="action-btn" onClick={() => openEditModal(note)}><EditIcon/></button>
-                                <button className="action-btn" onClick={() => handleDeleteNote(note.id)}><DeleteIcon/></button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-            <form className="add-note-form" onSubmit={handleAddNote}>
-                <input
-                    type="text"
-                    value={newNoteText}
-                    onChange={e => setNewNoteText(e.target.value)}
-                    placeholder="Новая заметка..."
-                />
-                <button type="submit" className="btn btn-primary">Добавить</button>
-            </form>
-            
-            {editingNote && (
-                 <Modal show={!!editingNote} onClose={() => setEditingNote(null)} title="Редактировать заметку">
-                     <form onSubmit={handleSaveEditedNote}>
-                         <div className="form-group">
-                            <textarea
-                                className="notes-textarea"
-                                value={editedText}
-                                onChange={e => setEditedText(e.target.value)}
-                                rows={5}
-                            />
-                         </div>
-                         <div className="form-actions">
-                             <button type="button" className="btn btn-secondary" onClick={() => setEditingNote(null)}>Отмена</button>
-                             <button type="submit" className="btn btn-primary">Сохранить</button>
-                         </div>
-                     </form>
-                 </Modal>
-            )}
-        </div>
-    );
-};
-
-interface ProjectScheduleProps {
-    schedule: ProjectScheduleItem[];
-    onUpdate: (schedule: ProjectScheduleItem[]) => void;
-}
-const ProjectSchedule = ({ schedule, onUpdate }: ProjectScheduleProps) => {
-    const [showModal, setShowModal] = useState(false);
-    const [editingItem, setEditingItem] = useState<ProjectScheduleItem | null>(null);
-    const [newItem, setNewItem] = useState<Omit<ProjectScheduleItem, 'id'>>({ name: '', startDate: '', endDate: '' });
-
-    const openModalForNew = () => {
-        setEditingItem(null);
-        setNewItem({ name: '', startDate: new Date().toISOString().split('T')[0], endDate: '' });
-        setShowModal(true);
-    };
-
-    const openModalForEdit = (item: ProjectScheduleItem) => {
-        setEditingItem(item);
-        setNewItem({ ...item });
-        setShowModal(true);
-    };
-
-    const handleSave = (e: React.FormEvent) => {
-        e.preventDefault();
-        let updatedSchedule;
-        if (editingItem) {
-            updatedSchedule = schedule.map(item => item.id === editingItem.id ? { ...item, ...newItem } : item);
-        } else {
-            updatedSchedule = [...schedule, { ...newItem, id: generateId() }];
-        }
-        onUpdate(updatedSchedule);
-        setShowModal(false);
-    };
     
-    const handleDelete = (id: string) => {
-        if(window.confirm('Удалить этот этап?')) {
-            onUpdate(schedule.filter(item => item.id !== id));
+    const handleDeleteItem = async (itemId: string) => {
+        if (!window.confirm('Удалить этот этап?')) return;
+        try {
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    return { ...p, schedule: (p.schedule || []).filter(item => item.id !== itemId) };
+                }
+                return p;
+            });
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Этап удален', 'success');
+        } catch (err) {
+            addToast('Не удалось удалить этап', 'error');
         }
     };
 
-    const handleToggleComplete = (itemId: string) => {
-        const updatedSchedule = schedule.map(item => 
-            item.id === itemId ? { ...item, completed: !item.completed } : item
-        );
-        onUpdate(updatedSchedule);
+    const toggleItemCompletion = async (itemId: string) => {
+         try {
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    const updatedSchedule = (p.schedule || []).map(item =>
+                        item.id === itemId ? { ...item, completed: !item.completed } : item
+                    );
+                    return { ...p, schedule: updatedSchedule };
+                }
+                return p;
+            });
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+        } catch (err) {
+            addToast('Не удалось обновить статус', 'error');
+        }
     };
 
     return (
         <div className="card">
             <div className="d-flex justify-between align-center mb-1">
                 <h3>График работ</h3>
-                <button className="btn btn-primary btn-sm" onClick={openModalForNew}>+ Добавить этап</button>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Добавить этап</button>
             </div>
             {schedule.length === 0 ? (
-                <div className="transaction-list-empty">Этапы работ не запланированы.</div>
+                <div className="transaction-list-empty">Этапы работ пока не добавлены.</div>
             ) : (
                 <div className="data-list">
-                    {schedule.map(item => (
+                    {schedule.sort((a,b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()).map(item => (
                         <div key={item.id} className={`data-item schedule-item ${item.completed ? 'completed' : ''}`}>
-                            <button 
-                                className="action-btn schedule-item-toggle" 
-                                onClick={() => handleToggleComplete(item.id)}
-                                aria-label={item.completed ? "Вернуть в работу" : "Отметить выполненным"}
-                            >
-                                {item.completed ? <ReplayIcon /> : <CheckIcon />}
-                            </button>
+                             <div className="schedule-item-toggle">
+                                <button className="action-btn" onClick={() => toggleItemCompletion(item.id)}>
+                                    {item.completed ? <ReplayIcon /> : <CheckIcon />}
+                                </button>
+                            </div>
                             <div className="data-item-info">
-                                <strong>{item.name}</strong>
+                                <p><strong>{item.name}</strong></p>
                                 <span className="data-item-subtext">
-                                    {new Date(item.startDate).toLocaleDateString()} - {item.endDate ? new Date(item.endDate).toLocaleDateString() : '...'}
+                                    {new Date(item.startDate).toLocaleDateString('ru-RU')} - {new Date(item.endDate).toLocaleDateString('ru-RU')}
                                 </span>
                             </div>
-                            <div className="item-actions">
-                                <button className="action-btn" onClick={() => openModalForEdit(item)}><EditIcon/></button>
-                                <button className="action-btn" onClick={() => handleDelete(item.id)}><DeleteIcon/></button>
-                            </div>
+                            <button className="action-btn" onClick={() => handleDeleteItem(item.id)} aria-label="Удалить этап">
+                                <DeleteIcon />
+                            </button>
                         </div>
                     ))}
                 </div>
             )}
-            <Modal show={showModal} onClose={() => setShowModal(false)} title={editingItem ? "Редактировать этап" : "Новый этап"}>
-                <form onSubmit={handleSave}>
+             <Modal show={showModal} onClose={() => !isSaving && setShowModal(false)} title="Добавить этап работ">
+                <form onSubmit={handleAddItem}>
                     <div className="form-group">
-                        <label>Название этапа</label>
-                        <input type="text" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} required/>
+                        <label>Наименование этапа</label>
+                        <input type="text" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} placeholder="Например, Черновые работы" required disabled={isSaving} />
                     </div>
-                    <div className="d-flex gap-1">
+                     <div className="d-flex gap-1">
                         <div className="form-group w-100">
                             <label>Дата начала</label>
-                            <input type="date" value={newItem.startDate} onChange={e => setNewItem({...newItem, startDate: e.target.value})} required/>
+                            <input type="date" value={newItem.startDate} onChange={e => setNewItem({ ...newItem, startDate: e.target.value })} required disabled={isSaving} />
                         </div>
                         <div className="form-group w-100">
                             <label>Дата окончания</label>
-                            <input type="date" value={newItem.endDate} onChange={e => setNewItem({...newItem, endDate: e.target.value})} />
+                            <input type="date" value={newItem.endDate} onChange={e => setNewItem({ ...newItem, endDate: e.target.value })} required disabled={isSaving} />
                         </div>
                     </div>
                     <div className="form-actions">
-                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Отмена</button>
-                        <button type="submit" className="btn btn-primary">Сохранить</button>
-                    </div>
-                </form>
-            </Modal>
-        </div>
-    );
-};
-
-interface ProjectDocumentsProps {
-    documents: ProjectDocument[];
-    onUpdate: (documents: ProjectDocument[]) => void;
-}
-const ProjectDocuments = ({ documents, onUpdate }: ProjectDocumentsProps) => {
-    const { addToast } = useToasts();
-    const [showModal, setShowModal] = useState(false);
-    const [isUploading, setIsUploading] = useState(false);
-    const [newDocument, setNewDocument] = useState({ name: '', file: null as File | null });
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            setNewDocument(prev => ({ ...prev, file: e.target.files![0], name: prev.name || e.target.files![0].name }));
-        }
-    };
-
-    const handleUpload = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newDocument.file) {
-            addToast('Выберите файл для загрузки', 'error');
-            return;
-        }
-        setIsUploading(true);
-        try {
-            const fileData = await fileToBase64(newDocument.file);
-            const doc: ProjectDocument = {
-                id: generateId(),
-                name: newDocument.name,
-                fileName: newDocument.file.name,
-                file: fileData
-            };
-            onUpdate([...documents, doc]);
-            setShowModal(false);
-            setNewDocument({ name: '', file: null });
-        } catch (err) {
-            addToast('Ошибка загрузки файла', 'error');
-        } finally {
-            setIsUploading(false);
-        }
-    };
-    
-    const handleDelete = (id: string) => {
-        if (window.confirm('Удалить этот документ?')) {
-            onUpdate(documents.filter(doc => doc.id !== id));
-        }
-    };
-    
-    const handleDownload = (fileData: string, fileName: string) => {
-        try {
-            const link = document.createElement('a');
-            link.href = fileData;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        } catch (error) {
-            console.error("Download failed:", error);
-            addToast('Не удалось скачать файл', 'error');
-        }
-    };
-
-    return (
-        <div className="card">
-             <div className="d-flex justify-between align-center mb-1">
-                <h3>Документы</h3>
-                <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Загрузить</button>
-            </div>
-            {documents.length === 0 ? (
-                 <div className="transaction-list-empty">Документов нет.</div>
-            ) : (
-                <div className="data-list">
-                    {documents.map(doc => (
-                        <div key={doc.id} className="data-item">
-                            <div className="data-item-info">
-                                <button className="link-button" onClick={() => handleDownload(doc.file, doc.fileName)}>{doc.name}</button>
-                                <span className="data-item-subtext">{doc.fileName}</span>
-                            </div>
-                            <div className="item-actions">
-                                <button className="action-btn" onClick={() => handleDelete(doc.id)}><DeleteIcon/></button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-             <Modal show={showModal} onClose={() => !isUploading && setShowModal(false)} title="Загрузить документ">
-                <form onSubmit={handleUpload}>
-                    <div className="form-group">
-                        <label>Файл</label>
-                        <input type="file" onChange={handleFileChange} required disabled={isUploading} />
-                    </div>
-                    <div className="form-group">
-                        <label>Название документа (необязательно)</label>
-                        <input type="text" value={newDocument.name} onChange={e => setNewDocument({...newDocument, name: e.target.value})} placeholder="Например, схема электрики" disabled={isUploading}/>
-                    </div>
-                     <div className="form-actions">
-                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={isUploading}>Отмена</button>
-                        <button type="submit" className="btn btn-primary" disabled={isUploading}>
-                            {isUploading ? <Loader /> : 'Загрузить'}
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={isSaving}>Отмена</button>
+                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                           {isSaving ? <Loader /> : 'Добавить'}
                         </button>
                     </div>
                 </form>
@@ -1854,60 +1504,277 @@ const ProjectDocuments = ({ documents, onUpdate }: ProjectDocumentsProps) => {
 };
 
 
-interface ProjectDetailsProps {
+interface ProjectDocumentsProps {
     project: Project;
     projects: Project[];
     setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
-    onBack: () => void;
-    directory: DirectoryItem[];
-    setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
-    templates: EstimateTemplate[];
-    setTemplates: React.Dispatch<React.SetStateAction<EstimateTemplate[]>>;
     userKey: string;
 }
-const ProjectDetails = ({ project, projects, setProjects, onBack, directory, setDirectory, templates, setTemplates, userKey }: ProjectDetailsProps) => {
-    const [isEditing, setIsEditing] = useState(false);
-    const [showActModal, setShowActModal] = useState(false);
+const ProjectDocuments = ({ project, projects, setProjects, userKey }: ProjectDocumentsProps) => {
+    const [showModal, setShowModal] = useState(false);
+    const [newItem, setNewItem] = useState({ name: '' });
+    const [documentFile, setDocumentFile] = useState<File | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
     const { addToast } = useToasts();
     
-    const handleToggleStatus = async () => {
-        const newStatus: 'В работе' | 'Завершен' = project.status === 'В работе' ? 'Завершен' : 'В работе';
-        const confirmationText = newStatus === 'Завершен' 
-            ? 'Вы уверены, что хотите завершить проект?' 
-            : 'Вы уверены, что хотите вернуть проект в работу?';
-        
-        if (window.confirm(confirmationText)) {
-            try {
-                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, status: newStatus, completedAt: newStatus === 'Завершен' ? new Date().toISOString() : undefined } : p);
-                setProjects(updatedProjects);
-                await api.saveData(userKey, 'projects', updatedProjects);
-                addToast(`Статус проекта изменен на "${newStatus}"`, 'success');
-            } catch (e) {
-                addToast('Не удалось изменить статус', 'error');
+    const documents = project.documents || [];
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            setDocumentFile(e.target.files[0]);
+            if (!newItem.name) {
+                setNewItem({ name: e.target.files[0].name.replace(/\.[^/.]+$/, "") });
             }
         }
     };
     
-    const updateProjectField = async <K extends keyof Project>(field: K, value: Project[K]) => {
-        const updatedProjects = projects.map(p => p.id === project.id ? { ...p, [field]: value } : p);
-        setProjects(updatedProjects);
-        await api.saveData(userKey, 'projects', updatedProjects);
+    const handleAddItem = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!documentFile) {
+            addToast('Выберите файл для загрузки', 'error');
+            return;
+        }
+        setIsSaving(true);
+        try {
+            const fileData = await fileToBase64(documentFile);
+            const itemWithId: ProjectDocument = {
+                id: generateId(),
+                name: newItem.name.trim(),
+                file: fileData,
+                fileName: documentFile.name
+            };
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    return { ...p, documents: [...(p.documents || []), itemWithId] };
+                }
+                return p;
+            });
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Документ загружен', 'success');
+            setShowModal(false);
+            setNewItem({ name: '' });
+            setDocumentFile(null);
+        } catch (err) {
+            addToast('Не удалось загрузить документ', 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteItem = async (itemId: string) => {
+        if (!window.confirm('Удалить этот документ?')) return;
+        try {
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    return { ...p, documents: (p.documents || []).filter(item => item.id !== itemId) };
+                }
+                return p;
+            });
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Документ удален', 'success');
+        } catch (err) {
+            addToast('Не удалось удалить документ', 'error');
+        }
+    };
+    
+    const handleDownload = (fileDataUrl: string, fileName: string) => {
+        const link = document.createElement('a');
+        link.href = fileDataUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    return (
+        <div className="card">
+            <div className="d-flex justify-between align-center mb-1">
+                <h3>Документы</h3>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>+ Загрузить</button>
+            </div>
+            {documents.length === 0 ? (
+                <div className="transaction-list-empty">Документов пока нет.</div>
+            ) : (
+                <div className="data-list">
+                    {documents.map(doc => (
+                        <div key={doc.id} className="data-item">
+                            <div className="data-item-info">
+                                <a href="#" onClick={(e) => { e.preventDefault(); handleDownload(doc.file, doc.fileName); }}>
+                                    {doc.name}
+                                </a>
+                            </div>
+                            <button className="action-btn" onClick={() => handleDeleteItem(doc.id)} aria-label="Удалить документ">
+                                <DeleteIcon />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+             <Modal show={showModal} onClose={() => !isSaving && setShowModal(false)} title="Загрузить документ">
+                <form onSubmit={handleAddItem}>
+                    <div className="form-group">
+                        <label>Файл</label>
+                        <input type="file" onChange={handleFileChange} required disabled={isSaving} />
+                    </div>
+                    <div className="form-group">
+                        <label>Название документа</label>
+                        <input type="text" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} placeholder="Например, Договор" required disabled={isSaving} />
+                    </div>
+                    <div className="form-actions">
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)} disabled={isSaving}>Отмена</button>
+                        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                           {isSaving ? <Loader /> : 'Загрузить'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+        </div>
+    );
+};
+
+interface ProjectNotesProps {
+    project: Project;
+    projects: Project[];
+    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    userKey: string;
+}
+const ProjectNotes = ({ project, projects, setProjects, userKey }: ProjectNotesProps) => {
+    const [newNote, setNewNote] = useState('');
+    const { addToast } = useToasts();
+    
+    const notes = project.notes || [];
+
+    const handleAddNote = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newNote.trim()) return;
+
+        try {
+            const noteWithId: ProjectNote = {
+                id: generateId(),
+                text: newNote.trim(),
+                createdAt: new Date().toISOString()
+            };
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    return { ...p, notes: [...(p.notes || []), noteWithId] };
+                }
+                return p;
+            });
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            setNewNote('');
+        } catch (err) {
+            addToast('Не удалось добавить заметку', 'error');
+        }
+    };
+
+    const handleDeleteNote = async (noteId: string) => {
+        if (!window.confirm('Удалить эту заметку?')) return;
+        try {
+            const updatedProjects = projects.map(p => {
+                if (p.id === project.id) {
+                    return { ...p, notes: (p.notes || []).filter(note => note.id !== noteId) };
+                }
+                return p;
+            });
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+            addToast('Заметка удалена', 'success');
+        } catch (err) {
+            addToast('Не удалось удалить заметку', 'error');
+        }
+    };
+
+    return (
+        <div className="card">
+            <h3>Заметки по объекту</h3>
+            {notes.length === 0 ? (
+                <div className="transaction-list-empty">Заметок пока нет.</div>
+            ) : (
+                <div className="data-list">
+                    {notes.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(note => (
+                        <div key={note.id} className="data-item">
+                            <div className="data-item-info">
+                                <p>{note.text}</p>
+                                <span className="data-item-subtext">{new Date(note.createdAt).toLocaleString('ru-RU')}</span>
+                            </div>
+                            <button className="action-btn" onClick={() => handleDeleteNote(note.id)} aria-label="Удалить заметку">
+                                <DeleteIcon />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+            <form onSubmit={handleAddNote} className="add-note-form">
+                <input
+                    type="text"
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Новая заметка..."
+                />
+                <button type="submit" className="btn btn-primary btn-sm">Добавить</button>
+            </form>
+        </div>
+    );
+};
+
+// --- VIEWS ---
+
+interface ProjectDetailsViewProps {
+    project: Project;
+    projects: Project[];
+    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    onBack: () => void;
+    userKey: string;
+    directory: DirectoryItem[];
+    setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
+    onSaveTemplate: (template: EstimateTemplate) => Promise<void>;
+}
+const ProjectDetailsView = ({ project, projects, setProjects, onBack, userKey, directory, setDirectory, onSaveTemplate }: ProjectDetailsViewProps) => {
+    const { addToast } = useToasts();
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [showActModal, setShowActModal] = useState(false);
+    const [actContent, setActContent] = useState('');
+    const [isActGenerating, setIsActGenerating] = useState(false);
+
+    const handleUpdateProject = async (updatedProject: Project) => {
+        try {
+            const updatedProjects = projects.map(p => p.id === updatedProject.id ? updatedProject : p);
+            setProjects(updatedProjects);
+            await api.saveData(userKey, 'projects', updatedProjects);
+        } catch (e) {
+            addToast('Ошибка при сохранении проекта', 'error');
+        }
+    };
+    
+    const handleDeleteProject = async () => {
+        if (window.confirm('Вы уверены, что хотите удалить этот проект? Это действие нельзя отменить.')) {
+            try {
+                const updatedProjects = projects.filter(p => p.id !== project.id);
+                setProjects(updatedProjects);
+                await api.saveData(userKey, 'projects', updatedProjects);
+                addToast('Проект удален', 'success');
+                onBack();
+            } catch (e) {
+                addToast('Ошибка при удалении проекта', 'error');
+            }
+        }
     };
 
     const handleUpdateEstimate = async (updatedEstimate: Estimate) => {
-        const newEstimates = project.estimates.map(e => e.id === updatedEstimate.id ? updatedEstimate : e);
-        await updateProjectField('estimates', newEstimates);
+        const updatedEstimates = project.estimates.map(e => e.id === updatedEstimate.id ? updatedEstimate : e);
+        await handleUpdateProject({ ...project, estimates: updatedEstimates });
     };
-
+    
     const handleAddEstimate = async () => {
-        const newEstimateName = `Доп. смета #${project.estimates.length + 1}`;
         const newEstimate: Estimate = {
             id: generateId(),
-            name: newEstimateName,
+            name: `Новая смета №${project.estimates.length + 1}`,
             items: [],
-            discount: { type: 'percent', value: 0 },
         };
-        await updateProjectField('estimates', [...project.estimates, newEstimate]);
+        await handleUpdateProject({ ...project, estimates: [...project.estimates, newEstimate] });
         addToast('Новая смета добавлена', 'success');
     };
 
@@ -1916,270 +1783,217 @@ const ProjectDetails = ({ project, projects, setProjects, onBack, directory, set
             addToast('Нельзя удалить последнюю смету', 'error');
             return;
         }
-        if (window.confirm('Вы уверены, что хотите удалить эту смету? Это действие нельзя отменить.')) {
+        if (window.confirm('Вы уверены, что хотите удалить эту смету?')) {
             const updatedEstimates = project.estimates.filter(e => e.id !== estimateId);
-            await updateProjectField('estimates', updatedEstimates);
+            await handleUpdateProject({ ...project, estimates: updatedEstimates });
             addToast('Смета удалена', 'success');
         }
     };
 
-     const handleSaveTemplate = async (template: EstimateTemplate) => {
-        const updatedTemplates = [...templates, template];
-        setTemplates(updatedTemplates);
-        await api.saveData(userKey, 'templates', updatedTemplates);
-        addToast('Шаблон сохранен!', 'success');
-    };
+    const generateAct = async () => {
+        if (!process.env.API_KEY) {
+            setActContent("Ошибка: API_KEY не настроен. Пожалуйста, установите его в переменных окружения.");
+            setShowActModal(true);
+            return;
+        }
+        setIsActGenerating(true);
+        setShowActModal(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+            const totalAmount = project.estimates.reduce((projectSum, estimate) => {
+                const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+                const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
+                return projectSum + (subtotal - discountAmount);
+            }, 0);
+
+            const prompt = `
+                Сгенерируй формальный "Акт сдачи-приемки выполненных работ" в текстовом формате (не JSON).
+                Используй следующие данные:
+                - Исполнитель: ${project.contractor?.companyName || project.contractor?.contactName || 'Исполнитель'}
+                - Заказчик: ${project.client.name}
+                - Объект: "${project.name}" по адресу ${project.address}
+                - Общая сумма работ по смете: ${formatCurrency(totalAmount)}
+                - Дата завершения работ: ${new Date(project.completedAt!).toLocaleDateString('ru-RU')}
+
+                Текст должен быть строгим, официальным и содержать стандартные формулировки о том, что работы выполнены в полном объеме, в надлежащем качестве и в установленные сроки, а заказчик не имеет претензий.
+                В конце акта оставь поля для подписей "_________________ (Исполнитель)" и "_________________ (Заказчик)".
+            `;
+
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: prompt,
+            });
+
+            setActContent(response.text);
+
+        } catch (error) {
+            console.error(error);
+            setActContent("Произошла ошибка при генерации акта. Проверьте консоль для получения дополнительной информации.");
+        } finally {
+            setIsActGenerating(false);
+        }
+    };
+    
     return (
-        <div className="animate-fade-slide-up">
-            <button onClick={onBack} className="back-button">
+        <>
+            <button className="back-button" onClick={onBack}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 11H7.83L13.42 5.41L12 4L4 12L12 20L13.41 18.59L7.83 13H20V11Z" fill="currentColor"/></svg>
-                <span>Все проекты</span>
+                Все проекты
             </button>
             <div className="project-details-header">
                 <div className="d-flex justify-between align-start">
                     <div>
                         <h2>{project.name}</h2>
-                        <p>{project.address} &bull; {project.client.name}, {project.client.phone}</p>
+                        <p>{project.address}</p>
+                        <p><strong>Клиент:</strong> {project.client.name}, {project.client.phone}</p>
                     </div>
                     <div className="project-header-actions">
-                         <button className="action-btn" onClick={() => setIsEditing(true)} aria-label="Редактировать проект"><EditIcon /></button>
-                         <button className="action-btn" onClick={handleToggleStatus} aria-label={project.status === 'В работе' ? "Завершить проект" : "Вернуть в работу"}>
-                             {project.status === 'В работе' ? <CheckIcon /> : <ReplayIcon />}
-                         </button>
-                          {project.status === 'Завершен' && (
-                            <button className="action-btn" onClick={() => setShowActModal(true)} aria-label="Создать Акт выполненных работ">
-                                <DocumentIcon />
-                            </button>
+                        {project.status === 'Завершен' && (
+                            <button className="action-btn" onClick={generateAct} aria-label="Сгенерировать акт"><DocumentIcon /></button>
                         )}
+                        <button className="action-btn" onClick={() => setShowEditModal(true)} aria-label="Редактировать проект"><EditIcon /></button>
+                        <button className="action-btn" onClick={handleDeleteProject} aria-label="Удалить проект"><DeleteIcon /></button>
                     </div>
                 </div>
             </div>
-            <FinancialDashboard project={project} />
 
-            <NotesComponent title="Заметки по проекту" notes={project.notes || []} onUpdate={(notes) => updateProjectField('notes', notes)} />
-            <ProjectSchedule schedule={project.schedule || []} onUpdate={(schedule) => updateProjectField('schedule', schedule)} />
-            <ProjectDocuments documents={project.documents || []} onUpdate={(documents) => updateProjectField('documents', documents)} />
+            <FinancialDashboard project={project} />
 
             <div className="estimates-container">
                 {project.estimates.map(estimate => (
-                    <EstimateEditor
+                     <EstimateEditor 
                         key={estimate.id}
-                        estimate={estimate}
+                        estimate={estimate} 
                         projectId={project.id}
-                        onUpdate={handleUpdateEstimate}
+                        onUpdate={handleUpdateEstimate} 
                         onDelete={handleDeleteEstimate}
                         directory={directory}
                         setDirectory={setDirectory}
-                        onSaveTemplate={handleSaveTemplate}
                         userKey={userKey}
+                        onSaveTemplate={onSaveTemplate}
                     />
                 ))}
             </div>
+             <div style={{textAlign: 'center', marginTop: 'var(--space-6)'}}>
+                 <button className="btn btn-secondary" onClick={handleAddEstimate}>+ Добавить смету</button>
+             </div>
 
-            <div className="d-flex" style={{justifyContent: 'center', marginTop: 'var(--space-6)'}}>
-                 <button className="btn btn-secondary" onClick={handleAddEstimate}>+ Создать смету</button>
-            </div>
-
-            <ExpenseTracker project={project} projects={projects} setProjects={setProjects} userKey={userKey}/>
+            <ExpenseTracker project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
             <PhotoReports project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
+            <ProjectSchedule project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
+            <ProjectDocuments project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
+            <ProjectNotes project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
 
-            <ProjectEditModal project={project} projects={projects} show={isEditing} onClose={() => setIsEditing(false)} setProjects={setProjects} userKey={userKey}/>
-            <ActGenerationModal show={showActModal} onClose={() => setShowActModal(false)} project={project} />
-        </div>
-    );
-};
-
-interface ProjectCreationModalProps {
-    show: boolean;
-    onClose: () => void;
-    projects: Project[];
-    setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
-    userProfile: UserProfile;
-    templates: EstimateTemplate[];
-    userKey: string;
-}
-const ProjectCreationModal = ({ show, onClose, projects, setProjects, userProfile, templates, userKey }: ProjectCreationModalProps) => {
-    const [newProject, setNewProject] = useState({ name: '', address: '', clientName: '', clientPhone: '' });
-    const [selectedTemplateId, setSelectedTemplateId] = useState('');
-    const [isSaving, setIsSaving] = useState(false);
-    const { addToast } = useToasts();
-
-    const handleCreateProject = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSaving(true);
-        try {
-            const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
-            const initialEstimateItems = selectedTemplate 
-                ? selectedTemplate.items.map(item => ({...item, id: generateId(), quantity: 1 })) 
-                : [];
-            
-            const project: Project = {
-                id: generateId(),
-                name: newProject.name,
-                address: newProject.address,
-                status: 'В работе',
-                client: { name: newProject.clientName, phone: newProject.clientPhone },
-                estimates: [{
-                    id: generateId(),
-                    name: selectedTemplate ? selectedTemplate.name : 'Основная смета',
-                    items: initialEstimateItems,
-                    discount: { type: 'percent', value: 0 }
-                }],
-                expenses: [],
-                payments: [],
-                photoReports: [],
-                notes: [],
-                schedule: [],
-                documents: [],
-                contractor: userProfile,
-                createdAt: new Date().toISOString()
-            };
-            const updatedProjects = [project, ...projects];
-            setProjects(updatedProjects);
-            await api.saveData(userKey, 'projects', updatedProjects);
-            addToast('Проект создан!', 'success');
-            setNewProject({ name: '', address: '', clientName: '', clientPhone: '' });
-            setSelectedTemplateId('');
-            onClose();
-        } catch (error) {
-            addToast('Не удалось создать проект', 'error');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-    
-    const handleClose = () => {
-        if(isSaving) return;
-        setNewProject({ name: '', address: '', clientName: '', clientPhone: '' });
-        setSelectedTemplateId('');
-        onClose();
-    }
-
-    return (
-        <Modal show={show} onClose={handleClose} title="Новый проект">
-            <form onSubmit={handleCreateProject}>
-                {templates.length > 0 && (
-                     <div className="form-group">
-                        <label>Начать с шаблона (необязательно)</label>
-                        <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(e.target.value)} disabled={isSaving}>
-                            <option value="">-- Новый проект --</option>
-                            {templates.map(template => (
-                                <option key={template.id} value={template.id}>{template.name}</option>
-                            ))}
-                        </select>
-                    </div>
+            <ProjectFormModal 
+                show={showEditModal}
+                onClose={() => setShowEditModal(false)}
+                onSave={handleUpdateProject}
+                existingProject={project}
+            />
+            <Modal show={showActModal} onClose={() => setShowActModal(false)} title="Акт сдачи-приемки работ">
+                {isActGenerating ? <Loader /> : (
+                    <>
+                        <textarea className="act-textarea" value={actContent} readOnly />
+                        <div className="form-actions">
+                             <button className="btn btn-secondary" onClick={() => setShowActModal(false)}>Закрыть</button>
+                             <button className="btn btn-primary" onClick={() => navigator.clipboard.writeText(actContent).then(() => addToast('Акт скопирован', 'success'))}>Скопировать</button>
+                        </div>
+                    </>
                 )}
-                <div className="form-group">
-                    <label>Название проекта</label>
-                    <input type="text" placeholder="Ремонт квартиры на Лесной" value={newProject.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, name: e.target.value })} required disabled={isSaving}/>
-                </div>
-                 <div className="form-group">
-                    <label>Адрес</label>
-                    <input type="text" placeholder="г. Москва, ул. Лесная, д. 5, кв. 10" value={newProject.address} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, address: e.target.value })} required disabled={isSaving}/>
-                </div>
-                 <div className="form-group">
-                    <label>Имя клиента</label>
-                    <input type="text" placeholder="Иван Петров" value={newProject.clientName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, clientName: e.target.value })} required disabled={isSaving}/>
-                </div>
-                 <div className="form-group">
-                    <label>Телефон клиента</label>
-                    <input type="tel" placeholder="+7 (999) 123-45-67" value={newProject.clientPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewProject({ ...newProject, clientPhone: e.target.value })} required disabled={isSaving}/>
-                </div>
-                <div className="form-actions">
-                    <button type="button" className="btn btn-secondary" onClick={handleClose} disabled={isSaving}>Отмена</button>
-                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                        {isSaving ? <Loader/> : 'Создать'}
-                    </button>
-                </div>
-            </form>
-        </Modal>
+            </Modal>
+        </>
     );
 };
 
-interface ProfileModalProps {
+interface ProjectFormModalProps {
     show: boolean;
     onClose: () => void;
-    profile: UserProfile;
-    setProfile: React.Dispatch<React.SetStateAction<UserProfile>>;
-    userKey: string;
+    onSave: (project: Project) => Promise<void>;
+    existingProject?: Project;
 }
-const ProfileModal = ({ show, onClose, profile, setProfile, userKey }: ProfileModalProps) => {
-    const [formData, setFormData] = useState<UserProfile>(profile);
+const ProjectFormModal = ({ show, onClose, onSave, existingProject }: ProjectFormModalProps) => {
+    const [projectData, setProjectData] = useState({
+        name: '', address: '', status: 'В работе' as 'В работе' | 'Завершен',
+        clientName: '', clientPhone: ''
+    });
     const [isSaving, setIsSaving] = useState(false);
     const { addToast } = useToasts();
-
+    
     useEffect(() => {
-        if (show) {
-            setFormData(profile);
+        if (show && existingProject) {
+            setProjectData({
+                name: existingProject.name,
+                address: existingProject.address,
+                status: existingProject.status,
+                clientName: existingProject.client.name,
+                clientPhone: existingProject.client.phone
+            });
+        } else if (show) {
+            setProjectData({ name: '', address: '', status: 'В работе', clientName: '', clientPhone: '' });
         }
-    }, [profile, show]);
-
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            try {
-                const base64 = await fileToBase64(e.target.files[0]);
-                setFormData(prev => ({ ...prev, logo: base64 }));
-            } catch (error) {
-                console.error("Error converting file to base64", error);
-                addToast("Не удалось загрузить файл.", "error");
-            }
-        }
-    };
+    }, [show, existingProject]);
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
         try {
-            setProfile(formData);
-            await api.saveData(userKey, 'profile', formData);
-            addToast('Профиль сохранен', 'success');
+            const projectToSave: Project = {
+                ...(existingProject || {
+                    id: generateId(), estimates: [{ id: generateId(), name: 'Основная смета', items: [] }],
+                    expenses: [], payments: [], createdAt: new Date().toISOString()
+                }),
+                name: projectData.name,
+                address: projectData.address,
+                status: projectData.status,
+                client: { name: projectData.clientName, phone: projectData.clientPhone },
+                completedAt: projectData.status === 'Завершен' && !existingProject?.completedAt ? new Date().toISOString() : existingProject?.completedAt,
+            };
+            await onSave(projectToSave);
+            addToast(existingProject ? 'Проект обновлен' : 'Проект создан', 'success');
             onClose();
-        } catch (error) {
-            addToast('Не удалось сохранить профиль', 'error');
+        } catch (e) {
+            addToast('Не удалось сохранить', 'error');
         } finally {
             setIsSaving(false);
         }
     };
 
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setProjectData(prev => ({ ...prev, [name]: value }));
+    };
+
     return (
-        <Modal show={show} onClose={() => !isSaving && onClose()} title="Профиль исполнителя">
+        <Modal show={show} onClose={() => !isSaving && onClose()} title={existingProject ? 'Редактировать проект' : 'Новый проект'}>
             <form onSubmit={handleSave}>
                 <div className="form-group">
-                     <label>Логотип</label>
-                    <div className="d-flex align-center gap-1">
-                        <div className="logo-preview-container">
-                            {formData.logo ? (
-                                 <img src={formData.logo} alt="Логотип" className="logo-preview" />
-                            ) : (
-                                <div className="logo-placeholder"><ImageIcon/></div>
-                            )}
-                        </div>
-                        <div>
-                            <input type="file" id="logo-upload" onChange={handleFileChange} accept="image/*" style={{ display: 'none' }} disabled={isSaving}/>
-                            <label htmlFor="logo-upload" className={`btn btn-secondary btn-sm ${isSaving ? 'disabled' : ''}`}>Загрузить</label>
-                            <p className="field-hint">Квадратное изображение</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="form-group">
-                    <label>Название компании</label>
-                    <input type="text" placeholder="ИП Петров / Бригада 'Мастер'" value={formData.companyName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, companyName: e.target.value })} disabled={isSaving}/>
+                    <label>Название объекта</label>
+                    <input type="text" name="name" value={projectData.name} onChange={handleChange} required disabled={isSaving}/>
                 </div>
                 <div className="form-group">
-                    <label>Контактное лицо</label>
-                    <input type="text" placeholder="Иван Петров" value={formData.contactName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, contactName: e.target.value })} disabled={isSaving}/>
+                    <label>Адрес</label>
+                    <input type="text" name="address" value={projectData.address} onChange={handleChange} required disabled={isSaving}/>
+                </div>
+                 <div className="form-group">
+                    <label>Имя клиента</label>
+                    <input type="text" name="clientName" value={projectData.clientName} onChange={handleChange} required disabled={isSaving}/>
+                </div>
+                 <div className="form-group">
+                    <label>Телефон клиента</label>
+                    <input type="tel" name="clientPhone" value={projectData.clientPhone} onChange={handleChange} required disabled={isSaving}/>
                 </div>
                 <div className="form-group">
-                    <label>Телефон</label>
-                    <input type="tel" placeholder="+7 (999) 123-45-67" value={formData.phone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, phone: e.target.value })} disabled={isSaving}/>
+                    <label>Статус</label>
+                    <select name="status" value={projectData.status} onChange={handleChange} required disabled={isSaving}>
+                        <option>В работе</option>
+                        <option>Завершен</option>
+                    </select>
                 </div>
-
                 <div className="form-actions">
                     <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSaving}>Отмена</button>
                     <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                        {isSaving ? <Loader/> : 'Сохранить'}
+                        {isSaving ? <Loader /> : 'Сохранить'}
                     </button>
                 </div>
             </form>
@@ -2187,259 +2001,660 @@ const ProfileModal = ({ show, onClose, profile, setProfile, userKey }: ProfileMo
     );
 };
 
-interface ProjectListProps {
+interface ReportsViewProps {
     projects: Project[];
-    onSelectProject: (id: string) => void;
-    onNewProject: () => void;
 }
-const ProjectList = ({ projects, onSelectProject, onNewProject }: ProjectListProps) => {
-    const [statusFilter, setStatusFilter] = useState<'В работе' | 'Завершен'>('В работе');
-    const [searchQuery, setSearchQuery] = useState('');
-    
+const ReportsView = ({ projects }: ReportsViewProps) => {
+    const today = new Date();
+    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+
+    const [startDate, setStartDate] = useState(firstDayOfMonth);
+    const [endDate, setEndDate] = useState(lastDayOfMonth);
+
     const filteredProjects = useMemo(() => {
-        const lowercasedQuery = searchQuery.toLowerCase();
-        return projects
-            .filter(p => p.status === statusFilter)
-            .filter(p => {
-                if (!lowercasedQuery) return true;
-                return (
-                    p.name.toLowerCase().includes(lowercasedQuery) ||
-                    p.address.toLowerCase().includes(lowercasedQuery) ||
-                    p.client.name.toLowerCase().includes(lowercasedQuery)
-                );
-            })
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [projects, statusFilter, searchQuery]);
+        return projects.filter(p => {
+            const completedDate = p.completedAt;
+            return p.status === 'Завершен' && completedDate && completedDate >= startDate && completedDate <= endDate + 'T23:59:59';
+        });
+    }, [projects, startDate, endDate]);
+
+    const reportData = useMemo(() => {
+        let totalRevenue = 0;
+        let totalExpenses = 0;
+        let totalProfit = 0;
+
+        filteredProjects.forEach(project => {
+            const estimateTotal = project.estimates.reduce((projectSum, estimate) => {
+                const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+                const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
+                return projectSum + (subtotal - discountAmount);
+            }, 0);
+            
+            const workTotal = project.estimates.flatMap(e => e.items)
+                .filter(item => item.type === 'Работа')
+                .reduce((sum, item) => sum + item.quantity * item.price, 0);
+            
+            const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
+
+            totalRevenue += estimateTotal;
+            totalExpenses += expensesTotal;
+            totalProfit += (workTotal - expensesTotal);
+        });
+
+        return {
+            totalRevenue,
+            totalExpenses,
+            totalProfit,
+            completedProjectsCount: filteredProjects.length,
+            averageProfit: filteredProjects.length > 0 ? totalProfit / filteredProjects.length : 0,
+        };
+    }, [filteredProjects]);
+
+    const handleExportCSV = () => {
+        if (filteredProjects.length === 0) return;
+        
+        let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // Add BOM for Excel
+        csvContent += "Проект,Клиент,Дата завершения,Сумма сметы,Расходы,Прибыль\n";
+
+        filteredProjects.forEach(p => {
+            const estimateTotal = p.estimates.reduce((sum, est) => sum + est.items.reduce((s, i) => s + i.price * i.quantity, 0), 0);
+            const expensesTotal = p.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+            const workTotal = p.estimates.flatMap(e => e.items).filter(i => i.type === 'Работа').reduce((sum, i) => sum + i.price * i.quantity, 0);
+            const profit = workTotal - expensesTotal;
+            
+            const row = [
+                `"${p.name.replace(/"/g, '""')}"`,
+                `"${p.client.name.replace(/"/g, '""')}"`,
+                new Date(p.completedAt!).toLocaleDateString('ru-RU'),
+                estimateTotal,
+                expensesTotal,
+                profit
+            ].join(',');
+            csvContent += row + "\n";
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `report_${startDate}_${endDate}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     return (
-        <div>
-            <div className="d-flex justify-between align-center mb-1">
-                <h2>Проекты</h2>
-                <div className="filter-toggle">
-                    <button className={statusFilter === 'В работе' ? 'active' : ''} onClick={() => setStatusFilter('В работе')}>В работе</button>
-                    <button className={statusFilter === 'Завершен' ? 'active' : ''} onClick={() => setStatusFilter('Завершен')}>Завершенные</button>
+        <>
+            <div className="reports-header">
+                <h3>Сводный отчет</h3>
+                <button className="btn btn-secondary btn-sm" onClick={handleExportCSV} disabled={filteredProjects.length === 0}>
+                    Скачать отчет (CSV)
+                </button>
+            </div>
+            
+            <div className="card date-filter-container">
+                 <div className="d-flex gap-1 align-center">
+                    <div className="form-group w-100">
+                        <label>Начало периода</label>
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                    </div>
+                     <span>&mdash;</span>
+                    <div className="form-group w-100">
+                        <label>Конец периода</label>
+                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                    </div>
+                 </div>
+            </div>
+
+            <div className="reports-grid">
+                <div className="report-card">
+                    <div className="report-card-label">Общая выручка</div>
+                    <div className="report-card-value">{formatCurrency(reportData.totalRevenue)}</div>
+                </div>
+                <div className="report-card">
+                    <div className="report-card-label">Общие расходы</div>
+                    <div className="report-card-value">{formatCurrency(reportData.totalExpenses)}</div>
+                </div>
+                <div className="report-card">
+                    <div className="report-card-label">Чистая прибыль</div>
+                    <div className={`report-card-value ${reportData.totalProfit >= 0 ? 'profit' : 'loss'}`}>
+                        {formatCurrency(reportData.totalProfit)}
+                    </div>
                 </div>
             </div>
 
-            <div className="search-container">
-                <SearchIcon />
-                <input
-                    type="text"
-                    placeholder="Поиск по названию, адресу, клиенту..."
-                    className="search-input"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+            <div className="reports-grid small" style={{gridTemplateColumns: 'repeat(2, 1fr)'}}>
+                 <div className="report-card small">
+                    <div className="report-card-label">Завершено проектов</div>
+                    <div className="report-card-value">{reportData.completedProjectsCount}</div>
+                </div>
+                 <div className="report-card small">
+                    <div className="report-card-label">Средняя прибыль</div>
+                    <div className="report-card-value">{formatCurrency(reportData.averageProfit)}</div>
+                </div>
+            </div>
+            
+             <div className="card">
+                <h3>Детализация по проектам</h3>
+                <div className="table-container">
+                    <table className="profit-table">
+                        <thead>
+                            <tr>
+                                <th>Проект</th>
+                                <th className="align-right">Сумма</th>
+                                <th className="align-right">Прибыль</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                             {filteredProjects.length === 0 ? (
+                                <tr><td colSpan={3} style={{textAlign: 'center', padding: '1rem'}}>Нет завершенных проектов за выбранный период.</td></tr>
+                            ) : (
+                                filteredProjects.map(p => {
+                                    const estimateTotal = p.estimates.reduce((sum, est) => {
+                                        const subtotal = est.items.reduce((s, i) => s + i.price * i.quantity, 0);
+                                        const discount = est.discount ? (est.discount.type === 'percent' ? subtotal * (est.discount.value / 100) : est.discount.value) : 0;
+                                        return sum + (subtotal - discount);
+                                    }, 0);
+                                    const expensesTotal = p.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+                                    const workTotal = p.estimates.flatMap(e => e.items).filter(i => i.type === 'Работа').reduce((sum, i) => sum + i.price * i.quantity, 0);
+                                    const profit = workTotal - expensesTotal;
+
+                                    return (
+                                        <tr key={p.id}>
+                                            <td>
+                                                <strong>{p.name}</strong><br/>
+                                                <small>{p.client.name}</small>
+                                            </td>
+                                            <td className="align-right">{formatCurrency(estimateTotal)}</td>
+                                            <td className={`align-right ${profit >= 0 ? 'profit' : 'loss'}`}>{formatCurrency(profit)}</td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </>
+    );
+};
+
+// --- MAIN APP ---
+type ViewState = 
+    | { view: 'projects' } 
+    | { view: 'project_details'; projectId: string; }
+    | { view: 'reports' }
+    | { view: 'directory' }
+    | { view: 'settings' }
+    | { view: 'inventory' };
+
+const App = () => {
+    const [user, setUser] = useLocalStorage<User | null>('prorab_user', null);
+    const userKey = useMemo(() => user?.email || 'guest', [user]);
+
+    const [loading, setLoading] = useState(true);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [directory, setDirectory] = useState<DirectoryItem[]>([]);
+    const [profile, setProfile] = useState<UserProfile>({ companyName: '', contactName: '', phone: '', logo: '' });
+    const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
+    const [inventory, setInventory] = useState<InventoryItem[]>([]);
+    const [inventoryNotes, setInventoryNotes] = useState<ProjectNote[]>([]);
+
+    const [currentView, setCurrentView] = useState<ViewState>({ view: 'projects' });
+    const [showProjectModal, setShowProjectModal] = useState(false);
+    const [showDirectoryModal, setShowDirectoryModal] = useState(false);
+    const [editingDirectoryItem, setEditingDirectoryItem] = useState<DirectoryItem | null>(null);
+    const [newDirectoryItemData, setNewDirectoryItemData] = useState<Omit<DirectoryItem, 'id'>>({ name: '', type: 'Работа', unit: 'шт', price: 0 });
+    const [isDirectorySaving, setIsDirectorySaving] = useState(false);
+    const [directorySearchTerm, setDirectorySearchTerm] = useState('');
+
+    const { addToast } = useToasts();
+    
+    useEffect(() => {
+        const loadInitialData = async () => {
+            if (userKey !== 'guest') {
+                try {
+                    const data = await api.getData(userKey);
+                    setProjects(data.projects);
+                    setDirectory(data.directory);
+                    setProfile(data.profile);
+                    setTemplates(data.templates);
+                    setInventory(data.inventory);
+                    setInventoryNotes(data.inventoryNotes);
+                } catch (error) {
+                    addToast('Не удалось загрузить данные', 'error');
+                }
+            }
+            setLoading(false);
+        };
+        loadInitialData();
+    }, [userKey, addToast]);
+    
+    const handleSaveProject = async (project: Project) => {
+        const updatedProjects = projects.find(p => p.id === project.id)
+            ? projects.map(p => p.id === project.id ? project : p)
+            : [project, ...projects];
+        
+        setProjects(updatedProjects);
+        await api.saveData(userKey, 'projects', updatedProjects);
+    };
+
+    const handleSaveProfile = async (updatedProfile: UserProfile) => {
+        setProfile(updatedProfile);
+        await api.saveData(userKey, 'profile', updatedProfile);
+    };
+    
+    const handleSaveTemplate = async (template: EstimateTemplate) => {
+        try {
+            const updatedTemplates = [...templates, template];
+            setTemplates(updatedTemplates);
+            await api.saveData(userKey, 'templates', updatedTemplates);
+            addToast('Шаблон сохранен!', 'success');
+        } catch (e) {
+            addToast('Не удалось сохранить шаблон', 'error');
+        }
+    };
+    
+    const openDirectoryEditModal = (item: DirectoryItem) => {
+        setEditingDirectoryItem(item);
+        setNewDirectoryItemData(item);
+        setShowDirectoryModal(true);
+    };
+
+    const handleDeleteDirectoryItem = async (itemId: string) => {
+        if (window.confirm('Вы уверены, что хотите удалить эту позицию из справочника?')) {
+            try {
+                const updatedDirectory = directory.filter(item => item.id !== itemId);
+                setDirectory(updatedDirectory);
+                await api.saveData(userKey, 'directory', updatedDirectory);
+                addToast('Позиция удалена из справочника', 'success');
+            } catch (e) {
+                addToast('Не удалось удалить позицию', 'error');
+            }
+        }
+    };
+
+    const handleSaveDirectoryItem = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsDirectorySaving(true);
+        const trimmedName = newDirectoryItemData.name.trim();
+        if (!trimmedName) {
+            addToast('Название не может быть пустым', 'error');
+            setIsDirectorySaving(false);
+            return;
+        }
+
+        try {
+            let updatedDirectory;
+            if (editingDirectoryItem) {
+                updatedDirectory = directory.map(item => item.id === editingDirectoryItem.id ? { ...item, ...newDirectoryItemData, name: trimmedName } : item);
+            } else {
+                // This case is not used as we don't have a dedicated "add to directory" button
+                // It's populated from estimates, but this logic is here for completeness.
+                const newItem: DirectoryItem = { ...newDirectoryItemData, name: trimmedName, id: generateId() };
+                updatedDirectory = [...directory, newItem];
+            }
+            setDirectory(updatedDirectory);
+            await api.saveData(userKey, 'directory', updatedDirectory);
+            addToast('Справочник обновлен', 'success');
+            setShowDirectoryModal(false);
+        } catch (e) {
+            addToast('Не удалось сохранить', 'error');
+        } finally {
+            setIsDirectorySaving(false);
+        }
+    };
+    
+    if (loading) {
+        return <Loader fullScreen />;
+    }
+
+    if (!user) {
+        return <AuthScreen onLogin={setUser} />;
+    }
+    
+    if (currentView.view === 'project_details') {
+        const project = projects.find(p => p.id === currentView.projectId);
+        if (!project) {
+            // Fallback if project not found
+            setCurrentView({ view: 'projects' });
+            return null;
+        }
+        return (
+             <main className="app-container">
+                <ProjectDetailsView 
+                    project={project}
+                    projects={projects}
+                    setProjects={setProjects}
+                    onBack={() => setCurrentView({ view: 'projects' })}
+                    userKey={userKey}
+                    directory={directory}
+                    setDirectory={setDirectory}
+                    onSaveTemplate={handleSaveTemplate}
                 />
-            </div>
+            </main>
+        );
+    }
+    
+    const renderContent = () => {
+        if (currentView.view === 'projects') {
+            return <ProjectListView projects={projects} setProjects={setProjects} onSelectProject={(id) => setCurrentView({ view: 'project_details', projectId: id })} onShowNewProjectModal={() => setShowProjectModal(true)} />;
+        }
+        if (currentView.view === 'reports') {
+            return <ReportsView projects={projects} />;
+        }
+        if (currentView.view === 'directory') {
+             const filteredDirectory = useMemo(() => {
+                const sortedDirectory = [...directory].sort((a, b) => a.name.localeCompare(b.name));
+                if (!directorySearchTerm.trim()) {
+                    return sortedDirectory;
+                }
+                return sortedDirectory.filter(item =>
+                    item.name.toLowerCase().includes(directorySearchTerm.toLowerCase())
+                );
+            }, [directory, directorySearchTerm]);
 
-            {filteredProjects.length === 0 ? (
-                <div className="empty-state">
-                    {projects.length === 0 ? (
-                        <>
-                            <p>У вас пока нет проектов. <br/>Начните с создания первого!</p>
-                            <button className="btn btn-primary" onClick={onNewProject}>Создать первый проект</button>
-                        </>
-                    ) : searchQuery ? (
-                        <p>Проекты по запросу "{searchQuery}" не найдены.</p>
-                    ) : (
-                         <p>Нет проектов со статусом "{statusFilter}".</p>
-                    )}
+            return (
+                 <div className="card">
+                    <h3>Справочник</h3>
+                    <p className="field-hint">Здесь хранятся все работы и материалы, которые вы добавляли в сметы. Вы можете управлять ими централизованно.</p>
+                    
+                    <div className="search-container">
+                        <SearchIcon />
+                        <input
+                            type="text"
+                            placeholder="Поиск по названию..."
+                            className="search-input"
+                            value={directorySearchTerm}
+                            onChange={e => setDirectorySearchTerm(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Наименование</th>
+                                    <th>Тип</th>
+                                    <th className="align-right">Цена</th>
+                                    <th className="align-right">Ед. изм.</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredDirectory.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} style={{ textAlign: 'center', padding: '1rem' }}>
+                                            {directorySearchTerm ? 'Ничего не найдено' : 'Справочник пока пуст.'}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredDirectory.map((item, index) => (
+                                        <tr key={item.id} className="animate-fade-slide-up" style={{ animationDelay: `${index * 50}ms` }}>
+                                            <td><strong>{item.name}</strong></td>
+                                            <td>{item.type}</td>
+                                            <td className="align-right">{formatCurrency(item.price)}</td>
+                                            <td className="align-right">{item.unit}</td>
+                                            <td className="align-right">
+                                                <div className="item-actions">
+                                                    <button className="action-btn" onClick={() => openDirectoryEditModal(item)} aria-label="Редактировать"><EditIcon /></button>
+                                                    <button className="action-btn" onClick={() => handleDeleteDirectoryItem(item.id)} aria-label="Удалить"><DeleteIcon /></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            ) : (
-                <div className="project-list-grid">
-                    {filteredProjects.map((p, index) => (
-                         <div key={p.id} className="card project-card animate-fade-slide-up" onClick={() => onSelectProject(p.id)} style={{ animationDelay: `${index * 75}ms` }}>
-                             <div className="project-card-header">
-                                <div>
-                                    <div className="project-card-title">{p.name}</div>
-                                    <div className="project-card-client">{p.client.name}</div>
-                                </div>
-                                <span className={`status-badge ${p.status === 'В работе' ? 'status-in-progress' : 'status-completed'}`}>{p.status}</span>
-                            </div>
-                            <FinancialDashboard project={p} />
-                         </div>
-                    ))}
+            );
+        }
+        if (currentView.view === 'inventory') {
+            return <InventoryView inventory={inventory} setInventory={setInventory} notes={inventoryNotes} setNotes={setInventoryNotes} projects={projects} userKey={userKey} />;
+        }
+        if (currentView.view === 'settings') {
+            return <SettingsView profile={profile} onSave={handleSaveProfile} onLogout={() => setUser(null)} />;
+        }
+        return null;
+    };
+
+
+    return (
+        <>
+            <Header user={user} onNavigate={setCurrentView} onLogout={() => setUser(null)} />
+            <main className="app-container">
+                {renderContent()}
+            </main>
+            <BottomNav currentView={currentView.view} onNavigate={setCurrentView} />
+            <ProjectFormModal 
+                show={showProjectModal}
+                onClose={() => setShowProjectModal(false)}
+                onSave={handleSaveProject}
+            />
+            <Modal show={showDirectoryModal} onClose={() => setShowDirectoryModal(false)} title="Редактировать справочник">
+                <form onSubmit={handleSaveDirectoryItem}>
+                    <div className="form-group">
+                        <label>Наименование</label>
+                        <input type="text" value={newDirectoryItemData.name} onChange={e => setNewDirectoryItemData(p => ({...p, name: e.target.value}))} required disabled={isDirectorySaving} />
+                    </div>
+                     <div className="form-group">
+                        <label>Тип</label>
+                        <select value={newDirectoryItemData.type} onChange={e => setNewDirectoryItemData(p => ({...p, type: e.target.value as 'Работа' | 'Материал'}))} disabled={isDirectorySaving}>
+                            <option>Работа</option>
+                            <option>Материал</option>
+                        </select>
+                    </div>
+                    <div className="d-flex gap-1">
+                        <div className="form-group w-100">
+                           <label>Цена</label>
+                           <input type="number" step="0.01" value={newDirectoryItemData.price} onChange={e => setNewDirectoryItemData(p => ({...p, price: parseFloat(e.target.value) || 0}))} required disabled={isDirectorySaving}/>
+                        </div>
+                        <div className="form-group w-100">
+                           <label>Ед. изм.</label>
+                           <input type="text" value={newDirectoryItemData.unit} onChange={e => setNewDirectoryItemData(p => ({...p, unit: e.target.value}))} required disabled={isDirectorySaving}/>
+                        </div>
+                    </div>
+                    <div className="form-actions">
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowDirectoryModal(false)} disabled={isDirectorySaving}>Отмена</button>
+                        <button type="submit" className="btn btn-primary" disabled={isDirectorySaving}>
+                            {isDirectorySaving ? <Loader /> : 'Сохранить'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+        </>
+    );
+};
+
+// --- AUTH SCREEN ---
+const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
+    const [isLogin, setIsLogin] = useState(true);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+            const user = isLogin ? await api.login(email, password) : await api.register(email, password);
+            onLogin(user);
+        } catch (err: any) {
+            setError(err.message || 'Произошла ошибка');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    return (
+        <div className="auth-container">
+            <div className="auth-card">
+                <div className="auth-header">
+                    <LogoIcon size={48} />
+                    <h1>{isLogin ? 'Вход в Прораб' : 'Регистрация'}</h1>
                 </div>
-            )}
-            <button className="fab" onClick={onNewProject} aria-label="Новый проект">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z" fill="currentColor"/></svg>
-            </button>
+                <form onSubmit={handleSubmit}>
+                    {error && <div className="auth-error">{error}</div>}
+                    <div className="form-group form-group-icon">
+                        <EmailIcon />
+                        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
+                    </div>
+                    <div className="form-group form-group-icon">
+                        <LockIcon />
+                        <input type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} required />
+                    </div>
+                    <button type="submit" className="btn btn-primary btn-large w-100" disabled={loading}>
+                        {loading ? <Loader /> : (isLogin ? 'Войти' : 'Создать аккаунт')}
+                    </button>
+                    <div style={{textAlign: 'center', marginTop: 'var(--space-6)'}}>
+                        <button type="button" className="link-button" onClick={() => setIsLogin(!isLogin)}>
+                            {isLogin ? 'У меня еще нет аккаунта' : 'Уже есть аккаунт? Войти'}
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     );
 };
 
+// --- PUBLIC ESTIMATE VIEW ---
 const PublicEstimateView = () => {
-    const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
-    const projectId = urlParams.get('projectId');
-    const estimateId = urlParams.get('estimateId');
-
-    const [project, setProject] = useState<Project | null | undefined>(undefined);
-    const [estimate, setEstimate] = useState<Estimate | null | undefined>(undefined);
-    const [isApproving, setIsApproving] = useState(false);
+    const [project, setProject] = useState<Project | null>(null);
+    const [estimate, setEstimate] = useState<Estimate | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const { addToast } = useToasts();
+    
     const [showCommentModal, setShowCommentModal] = useState(false);
     const [commentingItem, setCommentingItem] = useState<EstimateItem | null>(null);
+    
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const projectId = params.get('projectId');
+        const estimateId = params.get('estimateId');
 
-    const openCommentModal = (item: EstimateItem) => {
-        setCommentingItem(item);
-        setShowCommentModal(true);
+        if (!projectId || !estimateId) {
+            setError('Неверная ссылка на смету.');
+            setLoading(false);
+            return;
+        }
+
+        const allProjects = _get<Project[]>('prorab_projects_all', []);
+        const foundProject = allProjects.find(p => p.id === projectId);
+        const foundEstimate = foundProject?.estimates.find(e => e.id === estimateId);
+
+        if (foundProject && foundEstimate) {
+            setProject(foundProject);
+            setEstimate(foundEstimate);
+        } else {
+            setError('Смета не найдена. Возможно, она была удалена.');
+        }
+        setLoading(false);
+    }, []);
+
+    const handleApprove = () => {
+        if (!project || !estimate || estimate.approvedOn) return;
+        if (window.confirm('Вы уверены, что хотите согласовать эту смету? Это действие нельзя будет отменить.')) {
+            const allProjects = _get<Project[]>('prorab_projects_all', []);
+            const updatedProjects = allProjects.map(p => {
+                if (p.id === project.id) {
+                    const updatedEstimates = p.estimates.map(e => e.id === estimate.id ? {...e, approvedOn: new Date().toISOString()} : e);
+                    return {...p, estimates: updatedEstimates};
+                }
+                return p;
+            });
+            _set('prorab_projects_all', updatedProjects);
+            
+            // Also update the specific user's project data
+            const userKey = project.contractor?.contactName; // This is a bit of a hack
+            if (userKey) {
+                const userProjects = _get<Project[]>(`prorab_projects_${userKey}`, []);
+                const updatedUserProjects = userProjects.map(p => {
+                    if (p.id === project.id) {
+                        const updatedEstimates = p.estimates.map(e => e.id === estimate.id ? {...e, approvedOn: new Date().toISOString()} : e);
+                        return {...p, estimates: updatedEstimates};
+                    }
+                    return p;
+                });
+                _set(`prorab_projects_${userKey}`, updatedUserProjects);
+            }
+
+            setEstimate(prev => prev ? {...prev, approvedOn: new Date().toISOString()} : null);
+            addToast('Смета успешно согласована!', 'success');
+        }
     };
 
     const handleAddComment = (itemId: string, commentText: string) => {
+        if (!project || !estimate) return;
+
         const newComment: Comment = {
             id: generateId(),
             author: 'Клиент',
             text: commentText,
             timestamp: new Date().toISOString()
         };
+
+        const updatedEstimate = {
+            ...estimate,
+            items: estimate.items.map(item =>
+                item.id === itemId ? { ...item, comments: [...(item.comments || []), newComment] } : item
+            )
+        };
+        setEstimate(updatedEstimate);
         
-        try {
-            const allProjects = _get<Project[]>('prorab_projects_all', []);
-            const updatedProjects = allProjects.map(p => {
-                if (p.id === projectId) {
-                    const updatedEstimates = p.estimates.map(e => {
-                        if (e.id === estimateId) {
-                            const updatedItems = e.items.map(item => {
-                                if (item.id === itemId) {
-                                    return { ...item, comments: [...(item.comments || []), newComment] };
-                                }
-                                return item;
-                            });
-                            return { ...e, items: updatedItems };
-                        }
-                        return e;
-                    });
-                    return { ...p, estimates: updatedEstimates };
-                }
-                return p;
-            });
-            _set('prorab_projects_all', updatedProjects);
-
-            // Update local state to reflect change immediately
-            setEstimate(prev => {
-                if (!prev) return null;
-                const updatedItems = prev.items.map(item => {
-                    if (item.id === itemId) {
-                         return { ...item, comments: [...(item.comments || []), newComment] };
-                    }
-                    return item;
-                });
-                return { ...prev, items: updatedItems };
-            });
-            
-        } catch(e) {
-            console.error("Error saving comment", e);
-            alert("Не удалось сохранить комментарий.");
-        }
-    };
-
-
-    useEffect(() => {
-        try {
-            const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]') as Project[];
-            const foundProject = allProjects.find(p => p.id === projectId);
-            if (foundProject) {
-                const foundEstimate = foundProject.estimates.find(e => e.id === estimateId);
-                setProject(foundProject);
-                setEstimate(foundEstimate || null);
-            } else {
-                 setProject(null);
-                 setEstimate(null);
+        // This is tricky without a backend. We'll update the public store.
+        const allProjects = _get<Project[]>('prorab_projects_all', []);
+        const updatedProjects = allProjects.map(p => {
+            if (p.id === project.id) {
+                return { ...p, estimates: p.estimates.map(e => e.id === estimate.id ? updatedEstimate : e) };
             }
-        } catch (e) {
-            setProject(null);
-            setEstimate(null);
-        }
-    }, [projectId, estimateId]);
-
-    const handleApprove = () => {
-        if (!project || !estimate || !window.confirm('Вы уверены, что хотите согласовать эту смету? Это действие нельзя отменить.')) return;
-
-        setIsApproving(true);
-        const approvalDate = new Date().toISOString();
-
-        try {
-            setTimeout(() => {
-                const updateInStorage = (key: string) => {
-                    const storedProjects = JSON.parse(localStorage.getItem(key) || '[]') as Project[];
-                    const updatedProjects = storedProjects.map(p => {
-                        if (p.id === projectId) {
-                            const updatedEstimates = p.estimates.map(e => e.id === estimateId ? { ...e, approvedOn: approvalDate } : e);
-                            return { ...p, estimates: updatedEstimates };
-                        }
-                        return p;
-                    });
-                    localStorage.setItem(key, JSON.stringify(updatedProjects));
-                };
-
-                updateInStorage('prorab_projects_all');
-
-                const projectKeys = Object.keys(localStorage).filter(k => k.startsWith('prorab_projects_') && k !== 'prorab_projects_all');
-                for (const key of projectKeys) {
-                   if (JSON.parse(localStorage.getItem(key) || '[]').some((p: Project) => p.id === projectId)) {
-                        updateInStorage(key);
-                        break;
-                   }
-                }
-                
-                setEstimate(prev => prev ? { ...prev, approvedOn: approvalDate } : null);
-                setIsApproving(false);
-            }, 700);
-        } catch (e) {
-            console.error("Failed to approve estimate", e);
-            alert('Произошла ошибка при согласовании. Пожалуйста, попробуйте позже.');
-            setIsApproving(false);
-        }
+            return p;
+        });
+        _set('prorab_projects_all', updatedProjects);
     };
 
-
-    if (project === undefined || estimate === undefined) {
-        return <Loader fullScreen />;
-    }
-
-    if (!project || !estimate) {
-        return <div className="loader-overlay"><div style={{color: 'hsl(var(--text-primary))'}}>Смета не найдена или ссылка некорректна.</div></div>;
-    }
+    if (loading) return <Loader fullScreen />;
+    if (error) return <div className="app-container"><div className="auth-error">{error}</div></div>;
+    if (!project || !estimate) return null;
 
     const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
-    const discountAmount = estimate.discount
-        ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value)
-        : 0;
+    const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
     const total = subtotal - discountAmount;
-    
-    const totalsByType = {
-        work: estimate.items.filter(i => i.type === 'Работа').reduce((sum, item) => sum + item.quantity * item.price, 0),
-        material: estimate.items.filter(i => i.type === 'Материал').reduce((sum, item) => sum + item.quantity * item.price, 0),
-    };
     
     return (
         <div className="public-estimate-container">
-            <header className="public-header">
-                <h1>{estimate.name}</h1>
-                <button className="btn btn-primary print-button" onClick={() => window.print()}>
-                    <PrintIcon />
-                    <span>Печать / Сохранить в PDF</span>
+            <div className="public-header">
+                <a href={window.location.origin + window.location.pathname} className="header-logo" aria-label="На главную">
+                    <LogoIcon />
+                    <span>Прораб</span>
+                </a>
+                <button className="btn btn-secondary btn-sm print-button" onClick={() => window.print()}>
+                    <PrintIcon /> Печать / PDF
                 </button>
-            </header>
+            </div>
             
-            {project.contractor && (project.contractor.companyName || project.contractor.logo) && (
-                <div className="card contractor-card">
-                    {project.contractor.logo && <img src={project.contractor.logo} alt="Логотип" className="contractor-logo" />}
-                    <div className="contractor-info">
-                        <strong>{project.contractor.companyName || 'Исполнитель'}</strong>
-                        {project.contractor.contactName && <p>{project.contractor.contactName}</p>}
-                        {project.contractor.phone && <p>{project.contractor.phone}</p>}
-                    </div>
+            <div className="card contractor-card">
+                {project.contractor?.logo ? (
+                     <img src={project.contractor.logo} alt="Логотип исполнителя" className="contractor-logo" />
+                ) : (
+                    <div className="logo-placeholder"><ImageIcon /></div>
+                )}
+                <div className="contractor-info">
+                    <strong>{project.contractor?.companyName || project.contractor?.contactName}</strong>
+                    <p>{project.contractor?.phone}</p>
                 </div>
-            )}
-
-            <div className="card">
-                <h2>{project.name}</h2>
-                <p className="project-meta">{project.address}</p>
-                <p className="project-meta"><strong>Заказчик:</strong> {project.client.name}, {project.client.phone}</p>
             </div>
 
             <div className="card">
-                <h3>Детализация сметы</h3>
+                <div className="project-details-header">
+                    <h2>Смета: {estimate.name}</h2>
+                    <p><strong>Объект:</strong> {project.name}, {project.address}</p>
+                    <p><strong>Заказчик:</strong> {project.client.name}, {project.client.phone}</p>
+                </div>
                 <div className="table-container">
                     <table>
                         <thead>
@@ -2452,100 +2667,43 @@ const PublicEstimateView = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {estimate.items.length === 0 ? (
-                                <tr><td colSpan={5} style={{textAlign: 'center', padding: '1rem'}}>Позиций нет.</td></tr>
-                            ) : (
-                                estimate.items.map(item => (
-                                    <tr key={item.id}>
-                                        <td>
-                                            <strong>{item.name}</strong>
-                                            <br />
-                                            <small>{item.type}</small>
-                                        </td>
-                                        <td className="align-right">{item.quantity} {item.unit}</td>
-                                        <td className="align-right">{formatCurrency(item.price)}</td>
-                                        <td className="align-right">{formatCurrency(item.quantity * item.price)}</td>
-                                        <td className="align-right">
-                                            <button className="action-btn comment-btn" onClick={() => openCommentModal(item)} aria-label="Комментарии">
-                                                <CommentIcon />
-                                                {(item.comments?.length || 0) > 0 && <span className="comment-badge">{item.comments?.length}</span>}
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
+                            {estimate.items.map(item => (
+                                <tr key={item.id}>
+                                    <td><strong>{item.name}</strong><br/><small>{item.type}</small></td>
+                                    <td className="align-right">{item.quantity} {item.unit}</td>
+                                    <td className="align-right">{formatCurrency(item.price)}</td>
+                                    <td className="align-right">{formatCurrency(item.quantity * item.price)}</td>
+                                    <td className="align-right">
+                                        <button className="action-btn comment-btn" onClick={() => { setCommentingItem(item); setShowCommentModal(true); }}>
+                                            <CommentIcon />
+                                            {(item.comments?.length || 0) > 0 && <span className="comment-badge">{item.comments.length}</span>}
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
-            </div>
-
-            <div className="card">
-                 <h3>Итоги</h3>
-                 <div className="estimate-totals">
-                     <div className="total-row">
-                         <span>Работы</span>
-                         <span>{formatCurrency(totalsByType.work)}</span>
-                     </div>
-                     <div className="total-row">
-                         <span>Материалы</span>
-                         <span>{formatCurrency(totalsByType.material)}</span>
-                     </div>
-                      <div className="total-row">
-                         <span>Подытог</span>
-                         <span>{formatCurrency(subtotal)}</span>
-                     </div>
-                     {discountAmount > 0 && estimate.discount && (
-                         <div className="total-row discount-row">
-                             <span>Скидка ({estimate.discount.type === 'percent' ? `${estimate.discount.value}%` : formatCurrency(estimate.discount.value)})</span>
-                             <span>- {formatCurrency(discountAmount)}</span>
-                         </div>
-                     )}
-                     <div className="total-row grand-total">
-                         <span>Всего по смете</span>
-                         <span>{formatCurrency(total)}</span>
-                     </div>
-                 </div>
-            </div>
-            
-            {(project.schedule && project.schedule.length > 0) && (
-                <div className="card">
-                    <h3>График работ</h3>
-                    <div className="data-list">
-                         {project.schedule.map(item => (
-                            <div key={item.id} className="data-item">
-                                <div className="data-item-info">
-                                    <strong>{item.name}</strong>
-                                    <span className="data-item-subtext">
-                                        {new Date(item.startDate).toLocaleDateString()} - {item.endDate ? new Date(item.endDate).toLocaleDateString() : '...'}
-                                    </span>
-                                </div>
+                 <div className="estimate-summary-container">
+                    <div />
+                    <div className="estimate-totals">
+                        <div className="total-row"><span>Подытог</span><span>{formatCurrency(subtotal)}</span></div>
+                        {discountAmount > 0 && (
+                            <div className="total-row discount-row">
+                                <span>Скидка</span>
+                                <span>- {formatCurrency(discountAmount)}</span>
                             </div>
-                        ))}
+                        )}
+                        <div className="total-row grand-total"><span>Итого</span><span>{formatCurrency(total)}</span></div>
                     </div>
                 </div>
-            )}
+            </div>
             
-            {(project.documents && project.documents.length > 0) && (
+            {(project.photoReports || []).length > 0 && (
                 <div className="card">
-                    <h3>Документы</h3>
-                    <div className="data-list">
-                         {project.documents.map(doc => (
-                            <div key={doc.id} className="data-item">
-                                <div className="data-item-info">
-                                    <a href={doc.file} download={doc.fileName}>{doc.name}</a>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-
-            {(project.photoReports && project.photoReports.length > 0) && (
-                <div className="card">
-                    <h3>Фотоотчет о ходе работ</h3>
+                    <h3>Фотоотчеты</h3>
                     <div className="photo-reports-grid public-view">
-                        {(project.photoReports || []).map(report => (
+                         {(project.photoReports || []).map(report => (
                             <div key={report.id} className="photo-report-card-public">
                                 <img src={report.image} alt={report.description} />
                                 <div className="photo-report-info-public">
@@ -2558,36 +2716,32 @@ const PublicEstimateView = () => {
                 </div>
             )}
 
-             <div className="card approval-section">
+            <div className="approval-section">
                 {estimate.approvedOn ? (
                     <div className="approval-status approved">
-                        <CheckIcon />
+                        <CheckIcon/>
                         <div>
                             <strong>Смета согласована</strong>
-                            <p>Дата: {new Date(estimate.approvedOn).toLocaleDateString('ru-RU')}</p>
+                            <p>Заказчик утвердил эту смету {new Date(estimate.approvedOn).toLocaleString('ru-RU')}.</p>
                         </div>
                     </div>
                 ) : (
-                    <>
-                        <p>Пожалуйста, внимательно проверьте все позиции. Нажимая кнопку "Согласовать", вы подтверждаете свое согласие с объемом работ и их стоимостью.</p>
-                        <button className="btn btn-primary btn-large" onClick={handleApprove} disabled={isApproving}>
-                            {isApproving ? <Loader/> : 'Согласовать смету'}
-                        </button>
+                     <>
+                        <p>Пожалуйста, внимательно ознакомьтесь со сметой. Если у вас есть вопросы, свяжитесь с исполнителем. Если все верно, нажмите кнопку "Согласовать смету".</p>
+                        <button className="btn btn-primary btn-large" onClick={handleApprove}>Согласовать смету</button>
                     </>
                 )}
             </div>
 
             <footer className="public-footer">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span>Смета сформирована в</span>
-                    <a href={window.location.origin} target="_blank" rel="noopener noreferrer" className="footer-logo-link">
-                        <LogoIcon size={24} />
-                        <span>Прораб</span>
+                <p>
+                    Смета сформирована в&nbsp;
+                    <a href={window.location.origin + window.location.pathname} className="footer-logo-link" target="_blank" rel="noopener noreferrer">
+                        <LogoIcon size={16}/> Прораб
                     </a>
-                </div>
+                </p>
             </footer>
-            
-            <CommentModal
+             <CommentModal
                 show={showCommentModal}
                 onClose={() => setShowCommentModal(false)}
                 item={commentingItem}
@@ -2597,454 +2751,266 @@ const PublicEstimateView = () => {
     );
 };
 
-interface AuthScreenProps {
-    onLoginSuccess: (user: User) => void;
-}
-const AuthScreen = ({ onLoginSuccess }: AuthScreenProps) => {
-    const [isLogin, setIsLogin] = useState(true);
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const { addToast } = useToasts();
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-        setIsLoading(true);
-
-        try {
-            if (isLogin) {
-                const user = await api.login(email, password);
-                addToast('Вход выполнен успешно!', 'success');
-                onLoginSuccess(user);
-            } else {
-                if(password.length < 6) {
-                    throw new Error('Пароль должен быть не менее 6 символов.');
-                }
-                const newUser = await api.register(email, password);
-                addToast('Аккаунт успешно создан!', 'success');
-                onLoginSuccess(newUser);
-            }
-        } catch (err: any) {
-            setError(err.message || 'Произошла ошибка');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
+const Header = ({ user, onNavigate, onLogout }: { user: User | null, onNavigate: (view: ViewState) => void, onLogout: () => void }) => {
     return (
-        <main className="auth-container">
-            <div className="auth-card animate-fade-slide-up">
-                <div className="auth-header">
-                    <LogoIcon size={48} />
-                    <h1>Прораб</h1>
-                    <p>{isLogin ? 'Войдите, чтобы продолжить' : 'Создайте аккаунт для начала работы'}</p>
+        <header>
+            <div className="header-content">
+                 <a href="#" onClick={(e) => { e.preventDefault(); onNavigate({ view: 'projects' }); }} className="header-logo" aria-label="На главную">
+                    <LogoIcon />
+                    <span>Прораб</span>
+                </a>
+                <div className="header-actions">
+                     <button className="settings-btn" onClick={() => onNavigate({ view: 'reports' })} aria-label="Отчеты"><ReportsIcon /></button>
+                     <button className="settings-btn" onClick={() => onNavigate({ view: 'directory' })} aria-label="Справочник"><DirectoryIcon /></button>
+                     <button className="settings-btn" onClick={() => onNavigate({ view: 'inventory' })} aria-label="Инвентарь"><ToolIcon /></button>
+                     <button className="settings-btn" onClick={() => onNavigate({ view: 'settings' })} aria-label="Настройки"><SettingsIcon /></button>
+                     <button className="settings-btn" onClick={onLogout} aria-label="Выход"><LogoutIcon /></button>
                 </div>
-
-                <div className="modal-toggle" style={{ marginBottom: 'var(--space-6)' }}>
-                    <button className={isLogin ? 'active' : ''} onClick={() => { setIsLogin(true); setError('') }}>Вход</button>
-                    <button className={!isLogin ? 'active' : ''} onClick={() => { setIsLogin(false); setError('') }}>Регистрация</button>
-                </div>
-                
-                <form onSubmit={handleSubmit}>
-                    {error && <p className="auth-error">{error}</p>}
-                    <div className="form-group">
-                        <label htmlFor="auth-email">Email</label>
-                        <div className="form-group-icon">
-                            <EmailIcon />
-                            <input id="auth-email" type="email" placeholder="email@example.com" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)} required disabled={isLoading}/>
-                        </div>
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="auth-password">Пароль</label>
-                        <div className="form-group-icon">
-                            <LockIcon />
-                            <input id="auth-password" type="password" placeholder="••••••••" value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)} required disabled={isLoading}/>
-                        </div>
-                    </div>
-                    <button type="submit" className="btn btn-primary w-100" disabled={isLoading}>
-                        {isLoading ? <Loader /> : (isLogin ? 'Войти' : 'Создать аккаунт')}
-                    </button>
-                </form>
             </div>
-        </main>
+        </header>
     );
 };
 
-interface ReportsViewProps {
-    projects: Project[];
-    onBack: () => void;
-}
-const ReportsView = ({ projects, onBack }: ReportsViewProps) => {
-    const { addToast } = useToasts();
-    
-    const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
-    const getFirstDayOfYear = (date: Date) => new Date(date.getFullYear(), 0, 1);
-
-    const [startDate, setStartDate] = useState<string>(getFirstDayOfYear(new Date()).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
-
-    const filteredProjects = useMemo(() => {
-        if (!startDate || !endDate) return [];
-        const start = new Date(startDate).getTime();
-        const end = new Date(endDate).getTime() + (24 * 60 * 60 * 1000 - 1); // include the whole end day
-        
-        return projects.filter(p => {
-             // We consider a project to be in the period if it was completed within the period.
-            const completedDate = p.completedAt ? new Date(p.completedAt).getTime() : 0;
-            return p.status === 'Завершен' && completedDate >= start && completedDate <= end;
-        });
-    }, [projects, startDate, endDate]);
-
-    const stats = useMemo(() => {
-        let totalRevenue = 0;
-        let totalExpenses = 0;
-        
-        const projectBreakdown = filteredProjects.map(project => {
-            const estimateTotal = project.estimates.reduce((projectSum, estimate) => {
-                const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
-                const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
-                return projectSum + (subtotal - discountAmount);
-            }, 0);
-
-            const workTotal = project.estimates.flatMap(e => e.items)
-                .filter(item => item.type === 'Работа')
-                .reduce((sum, item) => sum + item.quantity * item.price, 0);
-
-            const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
-            
-            const profit = workTotal - expensesTotal;
-
-            totalRevenue += estimateTotal;
-            totalExpenses += expensesTotal;
-            
-            return {
-                id: project.id,
-                name: project.name,
-                revenue: estimateTotal,
-                expenses: expensesTotal,
-                profit: profit
-            };
-        }).sort((a,b) => b.profit - a.profit);
-        
-        const totalProfit = projectBreakdown.reduce((sum, p) => sum + p.profit, 0);
-        const averageRevenue = filteredProjects.length > 0 ? totalRevenue / filteredProjects.length : 0;
-        const averageProfit = filteredProjects.length > 0 ? totalProfit / filteredProjects.length : 0;
-
-        return { totalRevenue, totalExpenses, totalProfit, averageRevenue, averageProfit, projectBreakdown };
-    }, [filteredProjects]);
-
-    const setDateRange = (range: 'this_month' | 'last_month' | 'this_year') => {
-        const today = new Date();
-        let start, end;
-
-        switch(range) {
-            case 'this_month':
-                start = getFirstDayOfMonth(today);
-                end = today;
-                break;
-            case 'last_month':
-                const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                start = getFirstDayOfMonth(lastMonth);
-                end = new Date(today.getFullYear(), today.getMonth(), 0);
-                break;
-            case 'this_year':
-                start = getFirstDayOfYear(today);
-                end = today;
-                break;
-        }
-        setStartDate(start.toISOString().split('T')[0]);
-        setEndDate(end.toISOString().split('T')[0]);
-    };
-
-    const handleExportCsv = () => {
-        try {
-            const headers = ['Название проекта', 'Клиент', 'Статус', 'Сумма смет', 'Расходы', 'Оплачено', 'Прибыль'];
-            
-            const rows = filteredProjects.map(project => {
-                const estimateTotal = project.estimates.reduce((projectSum, estimate) => {
-                    const subtotal = estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
-                    const discountAmount = estimate.discount ? (estimate.discount.type === 'percent' ? subtotal * (estimate.discount.value / 100) : estimate.discount.value) : 0;
-                    return projectSum + (subtotal - discountAmount);
-                }, 0);
-
-                 const workTotal = project.estimates.flatMap(e => e.items)
-                    .filter(item => item.type === 'Работа')
-                    .reduce((sum, item) => sum + item.quantity * item.price, 0);
-
-                const expensesTotal = project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
-                const totalPaid = project.payments.reduce((sum, payment) => sum + payment.amount, 0);
-                const profit = workTotal - expensesTotal;
-                
-                const sanitize = (val: string) => `"${val.replace(/"/g, '""')}"`;
-
-                return [
-                    sanitize(project.name),
-                    sanitize(project.client.name),
-                    sanitize(project.status),
-                    estimateTotal.toFixed(2),
-                    expensesTotal.toFixed(2),
-                    totalPaid.toFixed(2),
-                    profit.toFixed(2)
-                ];
-            });
-
-            const csvRows = [headers.join(';'), ...rows.map(row => row.join(';'))];
-            const csvString = csvRows.join('\n');
-            const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' });
-            
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.setAttribute("href", url);
-            link.setAttribute("download", `prorab_report_${new Date().toISOString().split('T')[0]}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            addToast('Отчет успешно скачан', 'success');
-        } catch (error) {
-            console.error('CSV Export Error:', error);
-            addToast('Не удалось скачать отчет', 'error');
-        }
-    };
+const BottomNav = ({ currentView, onNavigate }: { currentView: ViewState['view'], onNavigate: (view: ViewState) => void }) => {
+    const navItems = [
+        { view: 'projects' as const, label: 'Проекты', icon: <ProjectsIcon /> },
+        { view: 'reports' as const, label: 'Отчеты', icon: <ReportsIcon /> },
+        { view: 'directory' as const, label: 'Справочник', icon: <DirectoryIcon /> },
+        { view: 'inventory' as const, label: 'Инвентарь', icon: <ToolIcon /> },
+    ];
 
     return (
-        <div className="animate-fade-slide-up">
-             <button onClick={onBack} className="back-button">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 11H7.83L13.42 5.41L12 4L4 12L12 20L13.41 18.59L7.83 13H20V11Z" fill="currentColor"/></svg>
-                <span>К проектам</span>
-            </button>
-            <div className="reports-header">
-                <h2>Сводный отчет</h2>
-                <button className="btn btn-primary" onClick={handleExportCsv} disabled={filteredProjects.length === 0}>
-                    Скачать отчет (CSV)
+        <nav className="bottom-nav">
+            {navItems.map(item => (
+                <button
+                    key={item.view}
+                    className={`bottom-nav-btn ${currentView === item.view ? 'active' : ''}`}
+                    onClick={() => onNavigate({ view: item.view })}
+                >
+                    {item.icon}
+                    <span>{item.label}</span>
                 </button>
+            ))}
+        </nav>
+    );
+};
+
+const ProjectListView = ({ projects, onSelectProject, onShowNewProjectModal }: { projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>>, onSelectProject: (projectId: string) => void, onShowNewProjectModal: () => void }) => {
+    const [filter, setFilter] = useState<'В работе' | 'Завершен'>('В работе');
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const filteredProjects = useMemo(() => {
+        return projects
+            .filter(p => p.status === filter)
+            .filter(p => 
+                p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                p.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                p.client.name.toLowerCase().includes(searchTerm.toLowerCase())
+            )
+            .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }, [projects, filter, searchTerm]);
+
+    return (
+        <>
+            <div className="d-flex justify-between align-center mb-1">
+                <div className="filter-toggle">
+                    <button className={filter === 'В работе' ? 'active' : ''} onClick={() => setFilter('В работе')}>В работе</button>
+                    <button className={filter === 'Завершен' ? 'active' : ''} onClick={() => setFilter('Завершен')}>Завершен</button>
+                </div>
+            </div>
+            
+            <div className="search-container">
+                <SearchIcon />
+                <input
+                    type="text"
+                    placeholder="Поиск по названию, адресу, клиенту..."
+                    className="search-input"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                />
             </div>
 
-            <div className="card date-filter-container">
+            {filteredProjects.length > 0 ? (
+                <div className="project-list-grid">
+                    {filteredProjects.map((p, index) => (
+                        <div key={p.id} className="card project-card animate-fade-slide-up" style={{ animationDelay: `${index * 50}ms` }} onClick={() => onSelectProject(p.id)}>
+                            <div className="project-card-header">
+                                <div>
+                                    <div className="project-card-title">{p.name}</div>
+                                    <div className="project-card-client">{p.client.name}</div>
+                                </div>
+                                <span className={`status-badge ${p.status === 'В работе' ? 'status-in-progress' : 'status-completed'}`}>
+                                    {p.status}
+                                </span>
+                            </div>
+                            <FinancialDashboard project={p} />
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="empty-state">
+                    <h3>Проектов пока нет</h3>
+                    <p>{searchTerm ? `Не найдено проектов по запросу "${searchTerm}"` : `У вас пока нет проектов со статусом "${filter}".`}</p>
+                    {filter === 'В работе' && !searchTerm && <button className="btn btn-primary" onClick={onShowNewProjectModal}>Создать первый проект</button>}
+                </div>
+            )}
+
+            {filter === 'В работе' && <button className="fab" onClick={onShowNewProjectModal} aria-label="Новый проект">+</button>}
+        </>
+    );
+};
+
+const SettingsView = ({ profile, onSave, onLogout }: { profile: UserProfile, onSave: (profile: UserProfile) => Promise<void>, onLogout: () => void }) => {
+    const [formData, setFormData] = useState(profile);
+    const [isSaving, setIsSaving] = useState(false);
+    const { addToast } = useToasts();
+    
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            try {
+                const base64 = await fileToBase64(e.target.files[0]);
+                setFormData(prev => ({ ...prev, logo: base64 }));
+            } catch (err) {
+                addToast('Не удалось загрузить логотип', 'error');
+            }
+        }
+    };
+    
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSaving(true);
+        try {
+            await onSave(formData);
+            addToast('Профиль сохранен', 'success');
+        } catch (err) {
+            addToast('Не удалось сохранить', 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+    
+    return (
+        <div className="card">
+            <h3>Настройки профиля</h3>
+            <form onSubmit={handleSave}>
+                <div className="d-flex align-center gap-1 mb-1">
+                    {formData.logo ? (
+                        <img src={formData.logo} alt="Логотип" className="logo-preview" />
+                    ) : (
+                        <div className="logo-placeholder"><ImageIcon /></div>
+                    )}
+                    <div>
+                        <label htmlFor="logo-upload" className="btn btn-secondary btn-sm">Загрузить лого</label>
+                        <input id="logo-upload" type="file" accept="image/*" onChange={handleFileChange} style={{display: 'none'}} />
+                        <p className="field-hint">Рекомендуется квадратное изображение</p>
+                    </div>
+                </div>
                 <div className="form-group">
-                    <label>Период (по дате завершения)</label>
-                    <div className="d-flex" style={{gap: 'var(--space-4)', alignItems: 'center'}}>
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                        <span>&mdash;</span>
-                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-                    </div>
+                    <label>Название компании / ИП</label>
+                    <input type="text" value={formData.companyName} onChange={e => setFormData({...formData, companyName: e.target.value})} />
                 </div>
-                <div className="d-flex" style={{gap: 'var(--space-3)', flexWrap: 'wrap'}}>
-                    <button className="btn btn-secondary btn-sm" onClick={() => setDateRange('this_month')}>Этот месяц</button>
-                    <button className="btn btn-secondary btn-sm" onClick={() => setDateRange('last_month')}>Прошлый месяц</button>
-                    <button className="btn btn-secondary btn-sm" onClick={() => setDateRange('this_year')}>Этот год</button>
+                <div className="form-group">
+                    <label>Контактное лицо</label>
+                    <input type="text" value={formData.contactName} onChange={e => setFormData({...formData, contactName: e.target.value})} required />
                 </div>
-            </div>
-
-            <div className="reports-grid">
-                <div className="report-card">
-                    <div className="report-card-label">Общая выручка</div>
-                    <div className="report-card-value">{formatCurrency(stats.totalRevenue)}</div>
+                <div className="form-group">
+                    <label>Телефон</label>
+                    <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
                 </div>
-                <div className="report-card">
-                    <div className="report-card-label">Общие расходы</div>
-                    <div className="report-card-value">{formatCurrency(stats.totalExpenses)}</div>
+                <div className="form-actions" style={{justifyContent: 'space-between'}}>
+                    <button type="button" className="btn btn-secondary" onClick={onLogout}>Выйти</button>
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        {isSaving ? <Loader /> : 'Сохранить'}
+                    </button>
                 </div>
-                <div className="report-card">
-                    <div className="report-card-label">Итоговая прибыль</div>
-                    <div className={`report-card-value ${stats.totalProfit >= 0 ? 'profit' : 'loss'}`}>
-                        {formatCurrency(stats.totalProfit)}
-                    </div>
-                </div>
-            </div>
-             <div className="reports-grid small">
-                <div className="report-card small">
-                    <div className="report-card-label">Завершено проектов</div>
-                    <div className="report-card-value">{filteredProjects.length}</div>
-                </div>
-                <div className="report-card small">
-                    <div className="report-card-label">Средний чек</div>
-                    <div className="report-card-value">{formatCurrency(stats.averageRevenue)}</div>
-                </div>
-                <div className="report-card small">
-                    <div className="report-card-label">Средняя прибыль</div>
-                    <div className={`report-card-value ${stats.averageProfit >= 0 ? 'profit' : 'loss'}`}>
-                        {formatCurrency(stats.averageProfit)}
-                    </div>
-                </div>
-            </div>
-
-            <div className="card">
-                <h3>Прибыльность по проектам</h3>
-                {stats.projectBreakdown.length === 0 ? (
-                    <div className="empty-state" style={{padding: 'var(--space-6)'}}>
-                        <p>Нет завершенных проектов за выбранный период.</p>
-                    </div>
-                ) : (
-                    <div className="table-container">
-                        <table className="profit-table">
-                            <thead>
-                                <tr>
-                                    <th>Проект</th>
-                                    <th className="align-right">Выручка</th>
-                                    <th className="align-right">Расходы</th>
-                                    <th className="align-right">Прибыль</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {stats.projectBreakdown.map(p => (
-                                    <tr key={p.id}>
-                                        <td>{p.name}</td>
-                                        <td className="align-right">{formatCurrency(p.revenue)}</td>
-                                        <td className="align-right">{formatCurrency(p.expenses)}</td>
-                                        <td className={`align-right ${p.profit >= 0 ? 'profit' : 'loss'}`}>{formatCurrency(p.profit)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
+            </form>
         </div>
     );
 };
 
-interface DirectoryEditModalProps {
-    show: boolean;
-    onClose: () => void;
-    item: DirectoryItem;
-    onSave: (item: DirectoryItem) => Promise<void>;
-}
-const DirectoryEditModal = ({ show, onClose, item, onSave }: DirectoryEditModalProps) => {
-    const [editedItem, setEditedItem] = useState<DirectoryItem>(item);
-    const [isSaving, setIsSaving] = useState(false);
-
-    useEffect(() => {
-        if (item) {
-            setEditedItem(item);
-        }
-    }, [item, show]);
-
-    const handleFormSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSaving(true);
-        await onSave(editedItem);
-        setIsSaving(false);
-        onClose();
-    };
-
-    if (!item) return null;
-
-    return (
-        <Modal show={show} onClose={onClose} title="Редактировать справочник">
-            <form onSubmit={handleFormSave}>
-                <div className="form-group">
-                    <label>Наименование</label>
-                    <input type="text" value={editedItem.name} onChange={e => setEditedItem({...editedItem, name: e.target.value})} required disabled={isSaving}/>
-                </div>
-                <div className="form-group">
-                    <label>Тип</label>
-                    <select value={editedItem.type} onChange={e => setEditedItem({...editedItem, type: e.target.value as 'Работа' | 'Материал'})} disabled={isSaving}>
-                        <option>Работа</option>
-                        <option>Материал</option>
-                    </select>
-                </div>
-                 <div className="form-group">
-                   <label>Ед. изм.</label>
-                   <input type="text" value={editedItem.unit} onChange={e => setEditedItem({...editedItem, unit: e.target.value})} required disabled={isSaving}/>
-                </div>
-                <div className="form-group">
-                    <label>Цена</label>
-                    <input type="number" step="0.01" value={editedItem.price} onChange={e => setEditedItem({...editedItem, price: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
-                </div>
-                <div className="form-actions">
-                    <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSaving}>Отмена</button>
-                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                        {isSaving ? <Loader/> : 'Сохранить'}
-                    </button>
-                </div>
-            </form>
-        </Modal>
-    );
-};
-
-interface DirectoryViewProps {
-    directory: DirectoryItem[];
-    setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
-    userKey: string;
-    onBack: () => void;
-}
-const DirectoryView = ({ directory, setDirectory, userKey, onBack }: DirectoryViewProps) => {
-    const [editingItem, setEditingItem] = useState<DirectoryItem | null>(null);
+const InventoryView = ({ inventory, setInventory, notes, setNotes, projects, userKey }: { inventory: InventoryItem[], setInventory: Dispatch<SetStateAction<InventoryItem[]>>, notes: ProjectNote[], setNotes: Dispatch<SetStateAction<ProjectNote[]>>, projects: Project[], userKey: string }) => {
     const { addToast } = useToasts();
+    const [showItemModal, setShowItemModal] = useState(false);
+    const [newItemName, setNewItemName] = useState('');
+    const [newNoteText, setNewNoteText] = useState('');
 
-    const handleEdit = (item: DirectoryItem) => {
-        setEditingItem(item);
+    const handleAddItem = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newItemName.trim()) return;
+        const newItem: InventoryItem = {
+            id: generateId(),
+            name: newItemName.trim(),
+            location: 'На базе',
+        };
+        const updatedInventory = [...inventory, newItem];
+        setInventory(updatedInventory);
+        await api.saveData(userKey, 'inventory', updatedInventory);
+        setNewItemName('');
+        setShowItemModal(false);
+    };
+    
+    const handleDeleteItem = async (itemId: string) => {
+        if (!window.confirm('Удалить инструмент?')) return;
+        const updatedInventory = inventory.filter(i => i.id !== itemId);
+        setInventory(updatedInventory);
+        await api.saveData(userKey, 'inventory', updatedInventory);
     };
 
-    const handleDelete = async (itemId: string) => {
-        if (window.confirm('Вы уверены, что хотите удалить эту запись из справочника?')) {
-            try {
-                const updatedDirectory = directory.filter(item => item.id !== itemId);
-                setDirectory(updatedDirectory);
-                await api.saveData(userKey, 'directory', updatedDirectory);
-                addToast('Запись удалена', 'success');
-            } catch (e) {
-                addToast('Не удалось удалить запись', 'error');
-            }
-        }
+    const handleLocationChange = async (itemId: string, location: string) => {
+        const updatedInventory = inventory.map(i => i.id === itemId ? {...i, location} : i);
+        setInventory(updatedInventory);
+        await api.saveData(userKey, 'inventory', updatedInventory);
     };
 
-    const handleSave = async (updatedItem: DirectoryItem) => {
-        try {
-            const updatedDirectory = directory.map(item => item.id === updatedItem.id ? updatedItem : item);
-            setDirectory(updatedDirectory);
-            await api.saveData(userKey, 'directory', updatedDirectory);
-            addToast('Запись обновлена', 'success');
-        } catch (e) {
-            addToast('Не удалось обновить запись', 'error');
-        }
+    const handleAddNote = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newNoteText.trim()) return;
+        const newNote: ProjectNote = {
+            id: generateId(),
+            text: newNoteText.trim(),
+            createdAt: new Date().toISOString(),
+        };
+        const updatedNotes = [newNote, ...notes];
+        setNotes(updatedNotes);
+        await api.saveData(userKey, 'inventory_notes', updatedNotes);
+        setNewNoteText('');
+    };
+    
+    const handleDeleteNote = async (noteId: string) => {
+        const updatedNotes = notes.filter(n => n.id !== noteId);
+        setNotes(updatedNotes);
+        await api.saveData(userKey, 'inventory_notes', updatedNotes);
     };
 
-    const sortedDirectory = useMemo(() => {
-        return [...directory].sort((a, b) => a.name.localeCompare(b.name));
-    }, [directory]);
+    const activeProjects = projects.filter(p => p.status === 'В работе');
 
     return (
-        <div className="animate-fade-slide-up">
-             <button onClick={onBack} className="back-button">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 11H7.83L13.42 5.41L12 4L4 12L12 20L13.41 18.59L7.83 13H20V11Z" fill="currentColor"/></svg>
-                <span>К проектам</span>
-            </button>
+        <>
             <div className="card">
                 <div className="d-flex justify-between align-center mb-1">
-                    <h2>Справочник</h2>
+                    <h3>Инструменты и оборудование</h3>
+                    <button className="btn btn-primary btn-sm" onClick={() => setShowItemModal(true)}>+ Добавить</button>
                 </div>
                 <div className="table-container">
                     <table>
                         <thead>
-                            <tr>
-                                <th>Название</th>
-                                <th>Тип</th>
-                                <th className="align-right">Цена</th>
-                                <th></th>
-                            </tr>
+                            <tr><th>Наименование</th><th>Местоположение</th><th></th></tr>
                         </thead>
                         <tbody>
-                            {sortedDirectory.length === 0 ? (
-                                <tr><td colSpan={4} style={{textAlign: 'center', padding: '1rem'}}>Справочник пуст.</td></tr>
+                            {inventory.length === 0 ? (
+                                <tr><td colSpan={3} style={{textAlign: 'center', padding: '1rem'}}>Инструменты не добавлены</td></tr>
                             ) : (
-                                sortedDirectory.map(item => (
+                                inventory.map(item => (
                                     <tr key={item.id}>
+                                        <td><strong>{item.name}</strong></td>
                                         <td>
-                                            <strong>{item.name}</strong>
-                                            <br/>
-                                            <small>{item.unit}</small>
+                                            <select value={item.location} onChange={(e) => handleLocationChange(item.id, e.target.value)} style={{maxWidth: '200px', padding: 'var(--space-2)'}}>
+                                                <option value="На базе">На базе</option>
+                                                {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
                                         </td>
-                                        <td>{item.type}</td>
-                                        <td className="align-right">{formatCurrency(item.price)}</td>
                                         <td className="align-right">
-                                            <div className="item-actions">
-                                                <button className="action-btn" onClick={() => handleEdit(item)} aria-label="Редактировать"><EditIcon /></button>
-                                                <button className="action-btn" onClick={() => handleDelete(item.id)} aria-label="Удалить"><DeleteIcon /></button>
-                                            </div>
+                                            <button className="action-btn" onClick={() => handleDeleteItem(item.id)}><DeleteIcon /></button>
                                         </td>
                                     </tr>
                                 ))
@@ -3053,366 +3019,54 @@ const DirectoryView = ({ directory, setDirectory, userKey, onBack }: DirectoryVi
                     </table>
                 </div>
             </div>
-
-            {editingItem && (
-                <DirectoryEditModal 
-                    show={!!editingItem}
-                    onClose={() => setEditingItem(null)}
-                    item={editingItem}
-                    onSave={handleSave}
-                />
-            )}
-        </div>
-    );
-};
-
-interface InventoryViewProps {
-    inventory: InventoryItem[];
-    setInventory: Dispatch<SetStateAction<InventoryItem[]>>;
-    projects: Project[];
-    userKey: string;
-    onBack: () => void;
-    inventoryNotes: ProjectNote[];
-    setInventoryNotes: Dispatch<SetStateAction<ProjectNote[]>>;
-}
-const InventoryView = ({ inventory, setInventory, projects, userKey, onBack, inventoryNotes, setInventoryNotes }: InventoryViewProps) => {
-    const [showModal, setShowModal] = useState(false);
-    const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
-    const [newItem, setNewItem] = useState<Omit<InventoryItem, 'id'>>({ name: '', location: 'На базе' });
-    const { addToast } = useToasts();
-    
-    const projectMap = useMemo(() => new Map(projects.map(p => [p.id, p.name])), [projects]);
-
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        let updatedInventory;
-        if (editingItem) {
-            updatedInventory = inventory.map(item => item.id === editingItem.id ? { ...item, ...newItem } : item);
-        } else {
-            updatedInventory = [...inventory, { ...newItem, id: generateId() }];
-        }
-        setInventory(updatedInventory);
-        await api.saveData(userKey, 'inventory', updatedInventory);
-        setShowModal(false);
-    };
-
-    const handleDelete = async (id: string) => {
-        if (window.confirm('Удалить этот инструмент из списка?')) {
-            const updatedInventory = inventory.filter(item => item.id !== id);
-            setInventory(updatedInventory);
-            await api.saveData(userKey, 'inventory', updatedInventory);
-            addToast('Инструмент удален', 'success');
-        }
-    };
-
-    const openModalForNew = () => {
-        setEditingItem(null);
-        setNewItem({ name: '', location: 'На базе' });
-        setShowModal(true);
-    };
-
-    const openModalForEdit = (item: InventoryItem) => {
-        setEditingItem(item);
-        setNewItem({ ...item });
-        setShowModal(true);
-    };
-
-    const handleNotesUpdate = async (notes: ProjectNote[]) => {
-        setInventoryNotes(notes);
-        await api.saveData(userKey, 'inventory_notes', notes);
-    };
-
-    return (
-        <div className="animate-fade-slide-up">
-            <button onClick={onBack} className="back-button">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 11H7.83L13.42 5.41L12 4L4 12L12 20L13.41 18.59L7.83 13H20V11Z" fill="currentColor"/></svg>
-                <span>К проектам</span>
-            </button>
-            <div className="card">
-                <div className="d-flex justify-between align-center mb-1">
-                    <h2>Инвентарь</h2>
-                    <button className="btn btn-primary" onClick={openModalForNew}>+ Добавить</button>
-                </div>
-                {inventory.length === 0 ? (
-                    <div className="empty-state">
-                        <p>Ваш список инструмента пуст.</p>
+             <div className="card">
+                <h3>Заметки по инвентарю</h3>
+                 {notes.map(note => (
+                    <div key={note.id} className="data-item">
+                        <div className="data-item-info">
+                            <p>{note.text}</p>
+                            <span className="data-item-subtext">{new Date(note.createdAt).toLocaleString('ru-RU')}</span>
+                        </div>
+                        <button className="action-btn" onClick={() => handleDeleteNote(note.id)} aria-label="Удалить заметку">
+                            <DeleteIcon />
+                        </button>
                     </div>
-                ) : (
-                    <div className="data-list">
-                        {inventory.map(item => (
-                            <div key={item.id} className="data-item">
-                                <div className="data-item-info">
-                                    <strong>{item.name}</strong>
-                                    <span className="data-item-subtext">
-                                        {item.location === 'На базе' ? 'На базе' : `Объект: ${projectMap.get(item.location) || 'Неизвестно'}`}
-                                    </span>
-                                </div>
-                                <div className="item-actions">
-                                    <button className="action-btn" onClick={() => openModalForEdit(item)}><EditIcon /></button>
-                                    <button className="action-btn" onClick={() => handleDelete(item.id)}><DeleteIcon /></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                 ))}
+                 <form onSubmit={handleAddNote} className="add-note-form">
+                    <input type="text" value={newNoteText} onChange={e => setNewNoteText(e.target.value)} placeholder="Что-то сломалось или нужно купить..."/>
+                    <button type="submit" className="btn btn-primary btn-sm">Добавить</button>
+                </form>
             </div>
-            <NotesComponent title="Заметки по инвентарю" notes={inventoryNotes} onUpdate={handleNotesUpdate} />
-            <Modal show={showModal} onClose={() => setShowModal(false)} title={editingItem ? 'Редактировать' : 'Новый инструмент'}>
-                <form onSubmit={handleSave}>
+            
+            <Modal show={showItemModal} onClose={() => setShowItemModal(false)} title="Добавить инструмент">
+                <form onSubmit={handleAddItem}>
                     <div className="form-group">
                         <label>Название</label>
-                        <input type="text" value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} required/>
+                        <input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Например, Перфоратор Makita" required/>
                     </div>
-                    <div className="form-group">
-                        <label>Местоположение</label>
-                        <select value={newItem.location} onChange={e => setNewItem({...newItem, location: e.target.value})}>
-                            <option value="На базе">На базе</option>
-                            {projects.filter(p => p.status === 'В работе').map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="form-actions">
-                        <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Отмена</button>
-                        <button type="submit" className="btn btn-primary">Сохранить</button>
+                     <div className="form-actions">
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowItemModal(false)}>Отмена</button>
+                        <button type="submit" className="btn btn-primary">Добавить</button>
                     </div>
                 </form>
             </Modal>
-        </div>
-    );
-};
-
-interface AppContentProps {
-    currentUser: User;
-    onLogout: () => void;
-}
-const AppContent = ({ currentUser, onLogout }: AppContentProps) => {
-    const userKey = currentUser.email;
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [directory, setDirectory] = useState<DirectoryItem[]>([]);
-    const [userProfile, setUserProfile] = useState<UserProfile>({ companyName: '', contactName: userKey, phone: '', logo: '' });
-    const [templates, setTemplates] = useState<EstimateTemplate[]>([]);
-    const [inventory, setInventory] = useState<InventoryItem[]>([]);
-    const [inventoryNotes, setInventoryNotes] = useState<ProjectNote[]>([]);
-    
-    const [isLoading, setIsLoading] = useState(true);
-    const [currentView, setCurrentView] = useState<'projects' | 'reports' | 'directory' | 'inventory'>('projects');
-    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-    const [showNewProjectModal, setShowNewProjectModal] = useState(false);
-    const [showProfileModal, setShowProfileModal] = useState(false);
-    const { addToast } = useToasts();
-
-    useEffect(() => {
-        const loadInitialData = async () => {
-            try {
-                const { projects, directory, profile, templates, inventory, inventoryNotes } = await api.getData(userKey);
-                setProjects(projects);
-                setDirectory(directory);
-                setUserProfile(profile);
-                setTemplates(templates);
-                setInventory(inventory);
-                setInventoryNotes(inventoryNotes);
-            } catch (e) {
-                addToast('Не удалось загрузить данные', 'error');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        loadInitialData();
-    }, [userKey, addToast]);
-    
-    const selectedProject = useMemo(() => {
-        return projects.find(p => p.id === selectedProjectId) || null;
-    }, [projects, selectedProjectId]);
-    
-    const handleSelectProject = (id: string) => setSelectedProjectId(id);
-    const handleBackToProjects = () => {
-        setSelectedProjectId(null);
-        setCurrentView('projects');
-    };
-    const handleViewChange = (view: 'projects' | 'reports' | 'directory' | 'inventory') => {
-        setCurrentView(view);
-        setSelectedProjectId(null); // Reset project selection when switching views
-    };
-
-    if (isLoading) {
-        return <Loader fullScreen />;
-    }
-
-    return (
-        <>
-            <header>
-                <div className="header-content">
-                    <div className="header-logo" onClick={() => handleViewChange('projects')} aria-label="На главную">
-                        <LogoIcon size={32}/>
-                        <span>Прораб</span>
-                    </div>
-                    <div className="header-actions">
-                         <button className="settings-btn" onClick={() => handleViewChange('inventory')} aria-label="Инвентарь">
-                            <ToolIcon />
-                        </button>
-                        <button className="settings-btn" onClick={() => handleViewChange('directory')} aria-label="Справочник">
-                            <DirectoryIcon />
-                        </button>
-                        <button className="settings-btn" onClick={() => handleViewChange('reports')} aria-label="Отчеты">
-                            <ReportsIcon />
-                        </button>
-                        <button className="settings-btn" onClick={() => setShowProfileModal(true)} aria-label="Настройки профиля">
-                            <SettingsIcon />
-                        </button>
-                        <button className="settings-btn" onClick={onLogout} aria-label="Выход">
-                            <LogoutIcon />
-                        </button>
-                    </div>
-                </div>
-            </header>
-            <main className="app-container">
-                 {currentView === 'projects' ? (
-                     selectedProject ? (
-                        <ProjectDetails 
-                            project={selectedProject} 
-                            projects={projects}
-                            setProjects={setProjects} 
-                            onBack={handleBackToProjects}
-                            directory={directory}
-                            setDirectory={setDirectory}
-                            templates={templates}
-                            setTemplates={setTemplates}
-                            userKey={userKey}
-                        />
-                    ) : (
-                        <ProjectList 
-                            projects={projects} 
-                            onSelectProject={handleSelectProject}
-                            onNewProject={() => setShowNewProjectModal(true)}
-                        />
-                    )
-                 ) : currentView === 'reports' ? (
-                    <ReportsView projects={projects} onBack={() => handleViewChange('projects')} />
-                 ) : currentView === 'directory' ? (
-                    <DirectoryView
-                        directory={directory}
-                        setDirectory={setDirectory}
-                        userKey={userKey}
-                        onBack={() => handleViewChange('projects')}
-                    />
-                 ) : (
-                    <InventoryView
-                        inventory={inventory}
-                        setInventory={setInventory}
-                        projects={projects}
-                        userKey={userKey}
-                        onBack={() => handleViewChange('projects')}
-                        inventoryNotes={inventoryNotes}
-                        setInventoryNotes={setInventoryNotes}
-                     />
-                 )}
-            </main>
-
-            <nav className="bottom-nav">
-                <button
-                    className={`bottom-nav-btn ${currentView === 'projects' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('projects')}
-                    aria-label="Проекты"
-                >
-                    <ProjectsIcon />
-                    <span>Проекты</span>
-                </button>
-                 <button
-                    className={`bottom-nav-btn ${currentView === 'inventory' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('inventory')}
-                    aria-label="Инвентарь"
-                >
-                    <ToolIcon />
-                    <span>Инвентарь</span>
-                </button>
-                <button
-                    className={`bottom-nav-btn ${currentView === 'directory' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('directory')}
-                    aria-label="Справочник"
-                >
-                    <DirectoryIcon />
-                    <span>Справочник</span>
-                </button>
-                <button
-                    className={`bottom-nav-btn ${currentView === 'reports' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('reports')}
-                    aria-label="Отчеты"
-                >
-                    <ReportsIcon />
-                    <span>Отчеты</span>
-                </button>
-            </nav>
-
-            <ProjectCreationModal 
-                show={showNewProjectModal} 
-                onClose={() => setShowNewProjectModal(false)} 
-                projects={projects}
-                setProjects={setProjects}
-                userProfile={userProfile}
-                templates={templates}
-                userKey={userKey}
-            />
-            <ProfileModal
-                show={showProfileModal}
-                onClose={() => setShowProfileModal(false)}
-                profile={userProfile}
-                setProfile={setUserProfile}
-                userKey={userKey}
-            />
         </>
     );
-}
-
-const App = () => {
-    const [currentUser, setCurrentUser] = useLocalStorage<User | null>('prorab_currentUser', null);
-    
-    // --- Routing Logic ---
-    const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
-    const view = urlParams.get('view');
-
-    const AppWrapper = (
-        <ToastProvider>
-            {(() => {
-                if (view === 'estimate') {
-                    return <PublicEstimateView />;
-                }
-
-                const handleLoginSuccess = (user: User) => {
-                    setCurrentUser({email: user.email}); // Store only non-sensitive data
-                };
-
-                const handleLogout = () => {
-                    if(window.confirm('Вы уверены, что хотите выйти?')) {
-                        setCurrentUser(null);
-                    }
-                };
-
-                if (!currentUser) {
-                    return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
-                }
-                
-                return <AppContent currentUser={currentUser} onLogout={handleLogout} />;
-            })()}
-        </ToastProvider>
-    );
-
-    return AppWrapper;
 };
 
-// This is the robust way to initialize the React app.
-const renderApp = () => {
-    const container = document.getElementById('root');
-    if (container) {
-        const root = createRoot(container);
-        root.render(<App />);
-    } else {
-        console.error('Fatal Error: Root container #root not found in the document.');
-    }
-};
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', renderApp);
-} else {
-    renderApp();
+// --- APP INITIALIZATION ---
+const queryParams = new URLSearchParams(window.location.search);
+const isPublicView = queryParams.has('view') && queryParams.get('view') === 'estimate';
+
+const AppWrapper = () => (
+    <ToastProvider>
+        {isPublicView ? <PublicEstimateView /> : <App />}
+    </ToastProvider>
+);
+
+const container = document.getElementById('root');
+if (container) {
+    const root = createRoot(container);
+    root.render(<AppWrapper />);
 }
