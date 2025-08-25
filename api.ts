@@ -1,6 +1,6 @@
 import type { User, Project, DirectoryItem, UserProfile, EstimateTemplate, InventoryItem, ProjectNote, Estimate } from './types';
 
-const BASE_URL = ''; // In production, this would be your API domain (e.g., https://api.prorab.app)
+const BASE_URL = 'https://api.prorab.app'; // This now points to the production backend API.
 let token: string | null = null;
 
 export const setToken = (newToken: string | null) => {
