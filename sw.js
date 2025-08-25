@@ -1,10 +1,12 @@
-const CACHE_NAME = 'prorab-cache-v2.4';
+const CACHE_NAME = 'prorab-cache-v2.6';
 const urlsToCache = [
   './',
   './index.html',
   './index.css',
   './index.tsx',
+  './logo.svg',
   './manifest.json',
+  './icons/icon.svg',
   './icons/prorab-192.png',
   './icons/prorab-512.png',
   './icons/prorab-maskable-512.png',

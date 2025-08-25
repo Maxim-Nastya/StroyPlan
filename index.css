@@ -1167,11 +1167,8 @@ tbody tr:hover {
 }
 
 /* 6.18 Logo */
-.app-logo .logo-bg {
-    fill: hsl(var(--primary));
-}
-.app-logo .logo-mark {
-    fill: hsl(var(--text-on-primary));
+.app-logo-img {
+    vertical-align: middle;
 }
 .header-logo {
     display: flex;
@@ -1180,7 +1177,7 @@ tbody tr:hover {
     cursor: pointer;
     text-decoration: none;
 }
-.header-logo .app-logo {
+.header-logo .app-logo-img {
     flex-shrink: 0;
 }
 .header-logo span {

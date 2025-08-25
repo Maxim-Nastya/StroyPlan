@@ -3,6 +3,12 @@
   "name": "Прораб - Помощник на объекте",
   "icons": [
     {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
       "src": "./icons/prorab-192.png",
       "sizes": "192x192",
       "type": "image/png"
