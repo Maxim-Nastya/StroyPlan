@@ -1125,6 +1125,9 @@ tbody tr:hover {
 .data-item-info a:hover {
     text-decoration: underline;
 }
+.data-item .item-actions {
+    flex-shrink: 0;
+}
 
 .schedule-item {
     padding-left: 0;
@@ -1321,6 +1324,13 @@ tbody tr:hover {
 }
 .photo-viewer-nav-btn.next {
     right: var(--space-4);
+}
+
+/* 6.20 Template Modal */
+.template-list-container {
+    max-height: 50vh;
+    overflow-y: auto;
+    padding-right: var(--space-2);
 }
 
 

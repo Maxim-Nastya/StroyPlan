@@ -1,7 +1,23 @@
-
-import React, { useState, useEffect, useMemo, createContext, useContext, useCallback, Dispatch, SetStateAction } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Dispatch, SetStateAction } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from '@google/genai';
+
+// Local module imports
+import { api } from './api';
+import { useLocalStorage } from './hooks';
+import { formatCurrency, generateId, fileToBase64 } from './utils';
+import { Loader, Modal, PhotoViewerModal, ToastProvider, useToasts } from './components';
+import type {
+    User, Project, Client, UserProfile, Comment, EstimateItem, Estimate, EstimateTemplate,
+    DirectoryItem, Expense, Payment, Discount, PhotoReport, ProjectScheduleItem,
+    ProjectDocument, InventoryItem, ProjectNote, FormEstimateItem, ViewState
+} from './types';
+import {
+    LogoIcon, EditIcon, DeleteIcon, CheckIcon, ReplayIcon, PrintIcon, SettingsIcon, ImageIcon,
+    LogoutIcon, EmailIcon, LockIcon, ReportsIcon, DirectoryIcon, ProjectsIcon, SearchIcon,
+    ShareIcon, ShoppingListIcon, DocumentIcon, CommentIcon, SaveTemplateIcon, ToolIcon, TemplateIcon
+} from './icons';
+
 
 // --- PWA Service Worker Registration ---
 if ('serviceWorker' in navigator) {
@@ -14,447 +30,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// --- ICONS ---
-const LogoIcon = ({ size = 32 }: { size?: number }) => (
-    <img src="./logo.svg" alt="Логотип Прораб" width={size} height={size} className="app-logo-img" />
-);
-const EditIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 17.25V21H6.75L17.81 9.94L14.06 6.19L3 17.25ZM20.71 7.04C21.1 6.65 21.1 6.02 20.71 5.63L18.37 3.29C17.98 2.9 17.35 2.9 16.96 3.29L15.13 5.12L18.88 8.87L20.71 7.04Z" fill="currentColor"/></svg>;
-const DeleteIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 19C6 20.1 6.9 21 8 21H16C17.1 21 18 20.1 18 19V7H6V19ZM19 4H15.5L14.5 3H9.5L8.5 4H5V6H19V4Z" fill="currentColor"/></svg>;
-const CheckIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="currentColor"/></svg>;
-const ReplayIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5V1L7 6L12 11V8C15.31 8 18 10.69 18 14C18 17.31 15.31 20 12 20C8.69 20 6 17.31 6 14H4C4 18.42 7.58 22 12 22C16.42 22 20 18.42 20 14C20 9.58 16.42 6 12 6Z" fill="currentColor"/></svg>;
-const PrintIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 8H5C3.34 8 2 9.34 2 11V17H6V21H18V17H22V11C22 9.34 20.66 8 19 8ZM16 19H8V14H16V19ZM19 12C18.45 12 18 11.55 18 11C18 10.45 18.45 10 19 10C19.55 10 20 10.45 20 11C20 11.55 19.55 12 19 12ZM18 3H6V7H18V3Z" fill="currentColor"/></svg>;
-const SettingsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.43 12.98C19.47 12.66 19.5 12.34 19.5 12C19.5 11.66 19.47 11.34 19.43 11.02L21.54 9.37C21.73 9.22 21.78 8.95 21.66 8.73L19.66 5.27C19.54 5.05 19.27 4.96 19.05 5.05L16.56 6.05C16.04 5.65 15.48 5.32 14.87 5.07L14.5 2.42C14.46 2.18 14.25 2 14 2H10C9.75 2 9.54 2.18 9.5 2.42L9.13 5.07C8.52 5.32 7.96 5.66 7.44 6.05L4.95 5.05C4.73 4.96 4.46 5.05 4.34 5.27L2.34 8.73C2.21 8.95 2.27 9.22 2.46 9.37L4.57 11.02C4.53 11.34 4.5 11.67 4.5 12C4.5 12.33 4.53 12.66 4.57 12.98L2.46 14.63C2.27 14.78 2.21 15.05 2.34 15.27L4.34 18.73C4.46 18.95 4.73 19.04 4.95 18.95L7.44 17.94C7.96 18.34 8.52 18.68 9.13 18.93L9.5 21.58C9.54 21.82 9.75 22 10 22H14C14.25 22 14.46 21.82 14.5 21.58L14.87 18.93C15.48 18.68 16.04 18.34 16.56 17.94L19.05 18.95C19.27 19.04 19.54 18.95 19.66 18.73L21.66 15.27C21.78 15.05 21.73 14.78 21.54 14.63L19.43 12.98ZM12 15.5C10.07 15.5 8.5 13.93 8.5 12C8.5 10.07 10.07 8.5 12 8.5C13.93 8.5 15.5 10.07 15.5 12C15.5 13.93 13.93 15.5 12 15.5Z" fill="currentColor"/></svg>;
-const ImageIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 19V5C21 3.9 20.1 3 19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19ZM8.5 13.5L11 16.5L14.5 12L19 18H5L8.5 13.5Z" fill="currentColor"/></svg>;
-const LogoutIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 7L15.59 8.41L18.17 11H8V13H18.17L15.59 15.59L17 17L22 12L17 7ZM4 5H12V3H4C2.9 3 2 3.9 2 5V19C2 20.1 2.9 21 4 21H12V19H4V5Z" fill="currentColor"/></svg>;
-const EmailIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 4H4C2.9 4 2.01 4.9 2.01 6L2 18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4ZM20 8L12 13L4 8V6L12 11L20 6V8Z" fill="currentColor"/></svg>;
-const LockIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 8H17V6C17 3.24 14.76 1 12 1C9.24 1 7 3.24 7 6V8H6C4.9 8 4 8.9 4 10V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V10C20 8.9 19.1 8 18 8ZM12 17C10.9 17 10 16.1 10 15C10 13.9 10.9 13 12 13C13.1 13 14 13.9 14 15C14 16.1 13.1 17 12 17ZM15.1 8H8.9V6C8.9 4.29 10.29 2.9 12 2.9C13.71 2.9 15.1 4.29 15.1 6V8Z" fill="currentColor"/></svg>;
-const ReportsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 9.2H8V19H5V9.2ZM10.6 5H13.4V19H10.6V5ZM16.2 13H19V19H16.2V13Z" fill="currentColor"/></svg>;
-const DirectoryIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V4C20 2.9 19.1 2 18 2ZM6 4H11V12L8.5 10.5L6 12V4Z" fill="currentColor"/></svg>;
-const ProjectsIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3L2 12h3v8h14v-8h3L12 3zm0 15c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" fill="currentColor"/><path d="M0 0h24v24H0z" fill="none"/></svg>;
-const SearchIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.5 14H14.71L14.43 13.73C15.41 12.59 16 11.11 16 9.5C16 5.91 13.09 3 9.5 3C5.91 3 3 5.91 3 9.5C3 13.09 5.91 16 9.5 16C11.11 16 12.59 15.41 13.73 14.43L14 14.71V15.5L19 20.49L20.49 19L15.5 14ZM9.5 14C7.01 14 5 11.99 5 9.5C5 7.01 7.01 5 9.5 5C11.99 5 14 7.01 14 9.5C14 11.99 11.99 14 9.5 14Z" fill="currentColor"/></svg>;
-const ShareIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 16.08C17.24 16.08 16.56 16.38 16.04 16.85L8.91 12.7C8.96 12.47 9 12.24 9 12C9 11.76 8.96 11.53 8.91 11.3L16.04 7.15C16.56 7.62 17.24 7.92 18 7.92C19.66 7.92 21 6.58 21 4.92C21 3.26 19.66 1.92 18 1.92C16.34 1.92 15 3.26 15 4.92C15 5.16 15.04 5.39 15.09 5.62L7.96 9.77C7.44 9.3 6.76 9 6 9C4.34 9 3 10.34 3 12C3 13.66 4.34 15 6 15C6.76 15 7.44 14.7 7.96 14.23L15.09 18.38C15.04 18.61 15 18.84 15 19.08C15 20.74 16.34 22.08 18 22.08C19.66 22.08 21 20.74 21 19.08C21 17.42 19.66 16.08 18 16.08Z" fill="currentColor"/></svg>;
-const ShoppingListIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11 9H13V6H11V9ZM11 13H13V11H11V13ZM11 17H13V15H11V17ZM7 20C7 20.55 7.45 21 8 21H16C16.55 21 17 20.55 17 20V7H8C7.45 7 7 7.45 7 8V20ZM16 4H12L11 3H7L6 4H2V6H18V4H16Z" fill="currentColor"/></svg>;
-const DocumentIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2ZM16 18H8V16H16V18ZM16 14H8V12H16V14ZM13 9V3.5L18.5 9H13Z" fill="currentColor"/></svg>;
-const CommentIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z" fill="currentColor"/></svg>;
-const CalendarIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z" fill="currentColor"/></svg>;
-const AttachFileIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z" fill="currentColor"/></svg>;
-const ToolIcon = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 13h-4v4h-2v-4h-4v-2h4V7h2v4h4v2M7 2v2H2v5h5V7h5v10H9v-5H4v5h5v5H2v-5H0v7h9v-5h4v5h9v-7h-5v-5h5V7h-5V2H7z" fill="currentColor"/></svg>;
-const SaveTemplateIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z" fill="currentColor"/></svg>;
-
-
-// --- DATA TYPES ---
-interface User {
-    email: string;
-    password?: string; // Should be hashed in a real app
-}
-
-interface Client {
-    name: string;
-    phone: string;
-}
-
-interface UserProfile {
-    companyName: string;
-    contactName: string;
-    phone: string;
-    logo: string; // base64 data URL
-}
-
-interface Comment {
-    id: string;
-    author: 'Клиент' | 'Исполнитель';
-    text: string;
-    timestamp: string;
-}
-
-interface EstimateItem {
-    id: string;
-    name: string;
-    type: 'Работа' | 'Материал';
-    unit: string;
-    quantity: number;
-    price: number;
-    comments?: Comment[];
-}
-
-interface Estimate {
-    id: string;
-    name: string;
-    items: EstimateItem[];
-    discount?: Discount;
-    approvedOn?: string;
-}
-
-interface EstimateTemplate {
-    id: string;
-    name: string;
-    items: Omit<EstimateItem, 'id' | 'quantity' | 'comments'>[];
-}
-
-interface DirectoryItem {
-    id: string;
-    name: string;
-    type: 'Работа' | 'Материал';
-    unit: string;
-    price: number;
-}
-
-interface Expense {
-    id: string;
-    date: string;
-    description: string;
-    amount: number;
-    receipt?: string; // base64 data URL
-}
-
-interface Payment {
-    id: string;
-    date: string;
-    amount: number;
-}
-
-interface Discount {
-    type: 'percent' | 'fixed';
-    value: number;
-}
-
-interface PhotoReport {
-    id: string;
-    date: string;
-    description: string;
-    image: string; // base64 data URL
-}
-
-interface ProjectScheduleItem {
-    id: string;
-    name: string;
-    startDate: string;
-    endDate: string;
-    completed?: boolean;
-}
-
-interface ProjectDocument {
-    id: string;
-    name: string;
-    file: string; // base64 data URL
-    fileName: string;
-}
-
-interface InventoryItem {
-    id: string;
-    name: string;
-    location: string; // 'На базе' or projectId
-}
-
-interface ProjectNote {
-    id: string;
-    text: string;
-    createdAt: string;
-}
-
-interface Project {
-    id: string;
-    name: string;
-    address: string;
-    status: 'В работе' | 'Завершен';
-    client: Client;
-    estimates: Estimate[];
-    expenses: Expense[];
-    payments: Payment[];
-    contractor?: UserProfile;
-    photoReports?: PhotoReport[];
-    notes?: ProjectNote[];
-    schedule?: ProjectScheduleItem[];
-    documents?: ProjectDocument[];
-    createdAt: string; // ISO Date string
-    completedAt?: string; // ISO Date string
-}
-
-// --- HOOK FOR LOCALSTORAGE ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, Dispatch<SetStateAction<T>>] => {
-    const [storedValue, setStoredValue] = useState<T>(() => {
-        if (typeof window === 'undefined') {
-            return initialValue;
-        }
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
-        } catch (error) {
-            console.error(error);
-            return initialValue;
-        }
-    });
-
-    const setValue: Dispatch<SetStateAction<T>> = (value) => {
-        try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            if (typeof window !== 'undefined') {
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    };
-
-    return [storedValue, setValue];
-}
-
-// --- UTILITY FUNCTIONS ---
-const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amount);
-};
-
-const generateId = () => `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-});
-
-// --- SIMULATED API HELPERS ---
-const _get = <T,>(key: string, defaultValue: T): T => {
-    return JSON.parse(localStorage.getItem(key) || JSON.stringify(defaultValue));
-};
-
-const _set = <T,>(key: string, value: T) => {
-    localStorage.setItem(key, JSON.stringify(value));
-};
-
-const _delay = (ms = 500) => {
-    return new Promise<void>(res => setTimeout(res, ms));
-};
-
-// --- SIMULATED API ---
-const api: {
-    login: (email: string, password: string) => Promise<User>;
-    register: (email: string, password: string) => Promise<User>;
-    getData: (userKey: string) => Promise<{ projects: Project[]; directory: DirectoryItem[]; profile: UserProfile; templates: EstimateTemplate[]; inventory: InventoryItem[]; inventoryNotes: ProjectNote[]; }>;
-    saveData: <T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory' | 'inventory_notes', data: T) => Promise<void>;
-} = {
-    async login(email: string, password: string): Promise<User> {
-        await _delay();
-        const users = _get<User[]>('prorab_users', []);
-        const user = users.find(u => u.email === email);
-        if (user && user.password === password) {
-            return { email: user.email };
-        }
-        throw new Error('Неверный email или пароль.');
-    },
-
-    async register(email: string, password: string): Promise<User> {
-        await _delay(700);
-        const users = _get<User[]>('prorab_users', []);
-        if (users.some(u => u.email === email)) {
-            throw new Error('Пользователь с таким email уже существует.');
-        }
-        const newUser: User = { email, password };
-        _set('prorab_users', [...users, newUser]);
-        return { email: newUser.email };
-    },
-
-    async getData(userKey: string): Promise<{ projects: Project[], directory: DirectoryItem[], profile: UserProfile, templates: EstimateTemplate[], inventory: InventoryItem[], inventoryNotes: ProjectNote[] }> {
-        await _delay(800);
-        let projects = _get<Project[]>(`prorab_projects_${userKey}`, []);
-        let directory = _get<DirectoryItem[]>(`prorab_directory_${userKey}`, []);
-        const profile = _get<UserProfile>(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' });
-        const templates = _get<EstimateTemplate[]>(`prorab_templates_${userKey}`, []);
-        const inventory = _get<InventoryItem[]>(`prorab_inventory_${userKey}`, []);
-        const inventoryNotes = _get<ProjectNote[]>(`prorab_inventory_notes_${userKey}`, []);
-        
-        // --- Data Migration for Directory Items without IDs ---
-        let directoryNeedsUpdate = false;
-        directory = directory.map(item => {
-            if (!item.id) {
-                directoryNeedsUpdate = true;
-                // @ts-ignore
-                return { ...item, id: generateId() };
-            }
-            return item;
-        });
-        if (directoryNeedsUpdate) {
-            _set(`prorab_directory_${userKey}`, directory);
-        }
-
-        // --- Data Migration for multiple estimates ---
-        let projectsNeedUpdate = false;
-        projects = projects.map(p => {
-            let tempProject: any = { ...p };
-            // @ts-ignore - check for old structure
-            if (p.estimate) {
-                projectsNeedUpdate = true;
-                const newEstimate: Estimate = {
-                    id: generateId(),
-                    name: 'Основная смета',
-                    // @ts-ignore
-                    items: p.estimate,
-                    // @ts-ignore
-                    discount: p.discount,
-                    // @ts-ignore
-                    approvedOn: p.estimateApprovedOn
-                };
-                tempProject.estimates = [newEstimate];
-                delete tempProject.estimate;
-                delete tempProject.discount;
-                delete tempProject.estimateApprovedOn;
-            }
-
-            // --- Data Migration for notes from string to array ---
-            if (tempProject.notes && typeof tempProject.notes === 'string' && tempProject.notes.trim() !== '') {
-                projectsNeedUpdate = true;
-                const newNote: ProjectNote = {
-                    id: generateId(),
-                    text: tempProject.notes,
-                    createdAt: new Date().toISOString()
-                };
-                tempProject.notes = [newNote];
-            }
-            
-            // --- Data Migration to add createdAt date ---
-            if (!tempProject.createdAt) {
-                projectsNeedUpdate = true;
-                tempProject.createdAt = new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString();
-            }
-
-            return tempProject as Project;
-        });
-
-
-        if (projectsNeedUpdate) {
-            _set(`prorab_projects_${userKey}`, projects);
-        }
-
-        // This is a workaround for sharing data to the public view
-        const allProjects = Object.keys(localStorage)
-            .filter(k => k.startsWith('prorab_projects_') && k !== 'prorab_projects_all')
-            .flatMap(k => JSON.parse(localStorage.getItem(k) || '[]'));
-        _set('prorab_projects_all', allProjects);
-        
-        // Sync comments from public store on load
-        projects = projects.map(p => {
-            const publicProject = allProjects.find((pubP:Project) => pubP.id === p.id);
-            if (!publicProject) return p;
-
-            const syncedEstimates = p.estimates.map(est => {
-                const publicEstimate = publicProject.estimates.find((pubE:Estimate) => pubE.id === est.id);
-                if (!publicEstimate) return est;
-                
-                const syncedItems = est.items.map(item => {
-                    const publicItem = publicEstimate.items.find((pubI:EstimateItem) => pubI.id === item.id);
-                    const clientComments = (publicItem?.comments || []).filter(c => c.author === 'Клиент');
-                    const contractorComments = item.comments?.filter(c => c.author === 'Исполнитель') || [];
-                    const combined = [...clientComments, ...contractorComments].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                    const uniqueComments = Array.from(new Map(combined.map(c => [c.id, c])).values());
-                    return { ...item, comments: uniqueComments.length > 0 ? uniqueComments : undefined };
-                });
-                return { ...est, items: syncedItems };
-            });
-            return { ...p, estimates: syncedEstimates };
-        });
-
-        return { projects, directory, profile, templates, inventory, inventoryNotes };
-    },
-
-    async saveData<T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory' | 'inventory_notes', data: T): Promise<void> {
-        await _delay();
-        const key = `prorab_${dataType}_${userKey}`;
-        _set(key, data);
-    
-        // If projects are updated, we must also update the aggregated 'all_projects' key
-        // to ensure share links work immediately with the latest data.
-        if (dataType === 'projects') {
-            const otherProjectKeys = Object.keys(localStorage)
-                .filter(k => k.startsWith('prorab_projects_') && k !== key && k !== 'prorab_projects_all');
-            
-            let combinedProjects = [...(data as Project[])];
-            for (const otherKey of otherProjectKeys) {
-                combinedProjects = [...combinedProjects, ..._get<Project[]>(otherKey, [])];
-            }
-             // Deduplicate in case of any overlap
-            const uniqueProjects = Array.from(new Map(combinedProjects.map(p => [p.id, p])).values());
-            _set('prorab_projects_all', uniqueProjects);
-        }
-    }
-};
-
-// --- UI COMPONENTS ---
-
-interface LoaderProps {
-  fullScreen?: boolean;
-}
-const Loader = ({ fullScreen = false }: LoaderProps) => (
-    <div className={fullScreen ? "loader-overlay" : ""}>
-        <div className="loader-spinner"></div>
-    </div>
-);
-
-type ToastMessage = { id: number; message: string; type: 'success' | 'error'; };
-const ToastContext = createContext<{ addToast: (message: string, type: 'success' | 'error') => void; }>({ addToast: () => {} });
-
-interface ToastProviderProps {
-    children: React.ReactNode;
-}
-const ToastProvider = ({ children }: ToastProviderProps) => {
-    const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-    const addToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-        const id = Date.now();
-        setToasts(prev => [...prev, { id, message, type }]);
-        setTimeout(() => {
-            setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
-        }, 3000);
-    }, []);
-
-    return (
-        <ToastContext.Provider value={{ addToast }}>
-            {children}
-            <div className="toast-container">
-                {toasts.map(toast => (
-                    <div key={toast.id} className={`toast toast-${toast.type}`}>
-                        {toast.message}
-                    </div>
-                ))}
-            </div>
-        </ToastContext.Provider>
-    );
-};
-
-const useToasts = () => useContext(ToastContext);
-
-interface ModalProps {
-    show: boolean;
-    onClose: () => void;
-    title: string;
-    children: React.ReactNode;
-}
-const Modal = ({ show, onClose, title, children }: ModalProps) => {
-    useEffect(() => {
-        if (show) {
-            document.body.classList.add('modal-open');
-        } else {
-            document.body.classList.remove('modal-open');
-        }
-        return () => {
-            document.body.classList.remove('modal-open');
-        };
-    }, [show]);
-
-    if (!show) return null;
-
-    return (
-        <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h3 id="modal-title">{title}</h3>
-                    <button onClick={onClose} className="close-button" aria-label="Закрыть">&times;</button>
-                </div>
-                {children}
-            </div>
-        </div>
-    );
-};
 
 // --- CORE APP COMPONENTS ---
 
@@ -570,6 +145,64 @@ const CommentModal = ({ show, onClose, item, onAddComment }: CommentModalProps) 
     );
 };
 
+interface TemplateModalProps {
+    show: boolean;
+    onClose: () => void;
+    templates: EstimateTemplate[];
+    onApplyTemplate: (template: EstimateTemplate) => void;
+    onDeleteTemplate: (templateId: string) => void;
+}
+const TemplateModal = ({ show, onClose, templates, onApplyTemplate, onDeleteTemplate }: TemplateModalProps) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const filteredTemplates = useMemo(() => {
+        const sortedTemplates = [...templates].sort((a, b) => a.name.localeCompare(b.name));
+        if (!searchTerm.trim()) return sortedTemplates;
+        return sortedTemplates.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [templates, searchTerm]);
+
+    const handleApply = (template: EstimateTemplate) => {
+        onApplyTemplate(template);
+        onClose();
+    }
+
+    return (
+        <Modal show={show} onClose={onClose} title="Применить шаблон">
+             <div className="search-container" style={{marginBottom: 'var(--space-4)'}}>
+                <SearchIcon />
+                <input
+                    type="text"
+                    placeholder="Поиск по названию шаблона..."
+                    className="search-input"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                />
+            </div>
+            <div className="template-list-container">
+                {filteredTemplates.length > 0 ? (
+                    <div className="data-list">
+                        {filteredTemplates.map(template => (
+                            <div key={template.id} className="data-item">
+                                <div className="data-item-info">
+                                    <p><strong>{template.name}</strong></p>
+                                    <small>{template.items.length} поз.</small>
+                                </div>
+                                <div className="item-actions">
+                                    <button className="btn btn-primary btn-sm" onClick={() => handleApply(template)}>Применить</button>
+                                    <button className="action-btn" onClick={() => onDeleteTemplate(template.id)} aria-label="Удалить шаблон"><DeleteIcon /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p style={{textAlign: 'center', color: 'hsl(var(--text-secondary))', padding: 'var(--space-4) 0'}}>
+                        {searchTerm ? 'Шаблоны не найдены.' : 'У вас нет сохраненных шаблонов.'}
+                    </p>
+                )}
+            </div>
+        </Modal>
+    );
+}
+
 
 interface EstimateEditorProps {
     estimate: Estimate;
@@ -580,19 +213,14 @@ interface EstimateEditorProps {
     setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
     userKey: string;
     onSaveTemplate: (template: EstimateTemplate) => Promise<void>;
+    templates: EstimateTemplate[];
+    onDeleteTemplate: (templateId: string) => Promise<void>;
 }
 
-type FormEstimateItem = {
-    name: string;
-    type: 'Работа' | 'Материал';
-    unit: string;
-    quantity: string | number;
-    price: string | number;
-}
-
-const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, setDirectory, userKey, onSaveTemplate }: EstimateEditorProps) => {
+const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, setDirectory, userKey, onSaveTemplate, templates, onDeleteTemplate }: EstimateEditorProps) => {
     const [showModal, setShowModal] = useState(false);
     const [showShoppingListModal, setShowShoppingListModal] = useState(false);
+    const [showTemplateModal, setShowTemplateModal] = useState(false);
     const [editingItem, setEditingItem] = useState<EstimateItem | null>(null);
     const [newItem, setNewItem] = useState<FormEstimateItem>({ name: '', type: 'Работа', unit: 'шт', quantity: '1', price: '' });
     const [suggestions, setSuggestions] = useState<DirectoryItem[]>([]);
@@ -814,6 +442,17 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
 
         onUpdate({ ...estimate, items: updatedItems });
     };
+
+    const handleApplyTemplate = (template: EstimateTemplate) => {
+        const newItems: EstimateItem[] = template.items.map(item => ({
+            ...item,
+            id: generateId(),
+            quantity: 1, // Default quantity
+        }));
+        const updatedItems = [...estimate.items, ...newItems];
+        onUpdate({ ...estimate, items: updatedItems });
+        addToast(`Шаблон "${template.name}" применен`, 'success');
+    };
     
     return (
         <div className="card">
@@ -828,6 +467,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                 />
                 <div className="card-header-actions">
                     <button className="btn btn-primary btn-sm" onClick={openModalForNew}>+ Добавить</button>
+                    <button className="action-btn" onClick={() => setShowTemplateModal(true)} aria-label="Применить шаблон"><TemplateIcon /></button>
                     <button className="action-btn" onClick={handleSaveAsTemplate} aria-label="Сохранить как шаблон"><SaveTemplateIcon /></button>
                     <button className="action-btn" onClick={() => setShowShoppingListModal(true)} aria-label="Список покупок"><ShoppingListIcon /></button>
                     <button className="action-btn" onClick={handleShare} aria-label="Поделиться"><ShareIcon /></button>
@@ -1000,6 +640,13 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                 item={commentingItem}
                 onAddComment={handleAddComment}
             />
+            <TemplateModal
+                show={showTemplateModal}
+                onClose={() => setShowTemplateModal(false)}
+                templates={templates}
+                onApplyTemplate={handleApplyTemplate}
+                onDeleteTemplate={onDeleteTemplate}
+            />
         </div>
     );
 };
@@ -1168,57 +815,6 @@ const ExpenseTracker = ({ project, projects, setProjects, userKey }: ExpenseTrac
             <Modal show={!!receiptPreview} onClose={closeReceiptPreview} title="Просмотр чека">
                 {receiptPreview && <img src={receiptPreview} alt="Чек" style={{width: '100%', borderRadius: 'var(--border-radius)'}} />}
             </Modal>
-        </div>
-    );
-};
-
-interface PhotoViewerModalProps {
-    show: boolean;
-    onClose: () => void;
-    images: PhotoReport[];
-    startIndex: number;
-}
-const PhotoViewerModal = ({ show, onClose, images, startIndex }: PhotoViewerModalProps) => {
-    const [currentIndex, setCurrentIndex] = useState(startIndex);
-
-    useEffect(() => {
-        if (show) {
-            setCurrentIndex(startIndex);
-        }
-    }, [show, startIndex]);
-
-    const goToPrevious = useCallback(() => {
-        setCurrentIndex(prevIndex => (prevIndex === 0 ? images.length - 1 : prevIndex - 1));
-    }, [images.length]);
-
-    const goToNext = useCallback(() => {
-        setCurrentIndex(prevIndex => (prevIndex === images.length - 1 ? 0 : prevIndex + 1));
-    }, [images.length]);
-
-    useEffect(() => {
-        if (!show) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'ArrowRight') goToNext();
-            else if (e.key === 'ArrowLeft') goToPrevious();
-            else if (e.key === 'Escape') onClose();
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [show, goToNext, goToPrevious, onClose]);
-
-    if (!show || images.length === 0) return null;
-
-    const currentImage = images[currentIndex];
-
-    return (
-        <div className="photo-viewer-overlay" onClick={onClose}>
-            <button className="photo-viewer-close-btn" aria-label="Закрыть" onClick={onClose}>&times;</button>
-            <button className="photo-viewer-nav-btn prev" aria-label="Предыдущее фото" onClick={(e) => { e.stopPropagation(); goToPrevious(); }}>&#10094;</button>
-            <div className="photo-viewer-content" onClick={(e) => e.stopPropagation()}>
-                <img src={currentImage.image} alt={currentImage.description} />
-                {currentImage.description && <p className="photo-viewer-description">{currentImage.description}</p>}
-            </div>
-            <button className="photo-viewer-nav-btn next" aria-label="Следующее фото" onClick={(e) => { e.stopPropagation(); goToNext(); }}>&#10095;</button>
         </div>
     );
 };
@@ -1730,9 +1326,11 @@ interface ProjectDetailsViewProps {
     userKey: string;
     directory: DirectoryItem[];
     setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
+    templates: EstimateTemplate[];
     onSaveTemplate: (template: EstimateTemplate) => Promise<void>;
+    onDeleteTemplate: (templateId: string) => Promise<void>;
 }
-const ProjectDetailsView = ({ project, projects, setProjects, onBack, userKey, directory, setDirectory, onSaveTemplate }: ProjectDetailsViewProps) => {
+const ProjectDetailsView = ({ project, projects, setProjects, onBack, userKey, directory, setDirectory, templates, onSaveTemplate, onDeleteTemplate }: ProjectDetailsViewProps) => {
     const { addToast } = useToasts();
     const [showEditModal, setShowEditModal] = useState(false);
     const [showActModal, setShowActModal] = useState(false);
@@ -1871,7 +1469,9 @@ const ProjectDetailsView = ({ project, projects, setProjects, onBack, userKey, d
                         directory={directory}
                         setDirectory={setDirectory}
                         userKey={userKey}
+                        templates={templates}
                         onSaveTemplate={onSaveTemplate}
+                        onDeleteTemplate={onDeleteTemplate}
                     />
                 ))}
             </div>
@@ -2181,13 +1781,6 @@ const ReportsView = ({ projects }: ReportsViewProps) => {
 };
 
 // --- MAIN APP ---
-type ViewState = 
-    | { view: 'projects' } 
-    | { view: 'project_details'; projectId: string; }
-    | { view: 'reports' }
-    | { view: 'directory' }
-    | { view: 'settings' }
-    | { view: 'inventory' };
 
 const App = () => {
     const [user, setUser] = useLocalStorage<User | null>('prorab_user', null);
@@ -2253,6 +1846,18 @@ const App = () => {
             addToast('Шаблон сохранен!', 'success');
         } catch (e) {
             addToast('Не удалось сохранить шаблон', 'error');
+        }
+    };
+
+    const handleDeleteTemplate = async (templateId: string) => {
+        if (!window.confirm('Вы уверены, что хотите удалить этот шаблон?')) return;
+        try {
+            const updatedTemplates = templates.filter(t => t.id !== templateId);
+            setTemplates(updatedTemplates);
+            await api.saveData(userKey, 'templates', updatedTemplates);
+            addToast('Шаблон удален', 'success');
+        } catch (e) {
+            addToast('Не удалось удалить шаблон', 'error');
         }
     };
     
@@ -2331,7 +1936,9 @@ const App = () => {
                     userKey={userKey}
                     directory={directory}
                     setDirectory={setDirectory}
+                    templates={templates}
                     onSaveTemplate={handleSaveTemplate}
+                    onDeleteTemplate={handleDeleteTemplate}
                 />
             </main>
         );
@@ -2543,9 +2150,10 @@ const PublicEstimateView = () => {
             return;
         }
 
-        const allProjects = _get<Project[]>('prorab_projects_all', []);
-        const foundProject = allProjects.find(p => p.id === projectId);
-        const foundEstimate = foundProject?.estimates.find(e => e.id === estimateId);
+        const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]');
+        const foundProject = allProjects.find((p: Project) => p.id === projectId);
+        const foundEstimate = foundProject?.estimates.find((e: Estimate) => e.id === estimateId);
+
 
         if (foundProject && foundEstimate) {
             setProject(foundProject);
@@ -2559,28 +2167,28 @@ const PublicEstimateView = () => {
     const handleApprove = () => {
         if (!project || !estimate || estimate.approvedOn) return;
         if (window.confirm('Вы уверены, что хотите согласовать эту смету? Это действие нельзя будет отменить.')) {
-            const allProjects = _get<Project[]>('prorab_projects_all', []);
-            const updatedProjects = allProjects.map(p => {
+            const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]');
+            const updatedProjects = allProjects.map((p: Project) => {
                 if (p.id === project.id) {
                     const updatedEstimates = p.estimates.map(e => e.id === estimate.id ? {...e, approvedOn: new Date().toISOString()} : e);
                     return {...p, estimates: updatedEstimates};
                 }
                 return p;
             });
-            _set('prorab_projects_all', updatedProjects);
+            localStorage.setItem('prorab_projects_all', JSON.stringify(updatedProjects));
             
             // Also update the specific user's project data
             const userKey = project.contractor?.contactName; // This is a bit of a hack
             if (userKey) {
-                const userProjects = _get<Project[]>(`prorab_projects_${userKey}`, []);
-                const updatedUserProjects = userProjects.map(p => {
+                const userProjects = JSON.parse(localStorage.getItem(`prorab_projects_${userKey}`) || '[]');
+                const updatedUserProjects = userProjects.map((p: Project) => {
                     if (p.id === project.id) {
                         const updatedEstimates = p.estimates.map(e => e.id === estimate.id ? {...e, approvedOn: new Date().toISOString()} : e);
                         return {...p, estimates: updatedEstimates};
                     }
                     return p;
                 });
-                _set(`prorab_projects_${userKey}`, updatedUserProjects);
+                localStorage.setItem(`prorab_projects_${userKey}`, JSON.stringify(updatedUserProjects));
             }
 
             setEstimate(prev => prev ? {...prev, approvedOn: new Date().toISOString()} : null);
@@ -2607,14 +2215,14 @@ const PublicEstimateView = () => {
         setEstimate(updatedEstimate);
         
         // This is tricky without a backend. We'll update the public store.
-        const allProjects = _get<Project[]>('prorab_projects_all', []);
-        const updatedProjects = allProjects.map(p => {
+        const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]');
+        const updatedProjects = allProjects.map((p: Project) => {
             if (p.id === project.id) {
                 return { ...p, estimates: p.estimates.map(e => e.id === estimate.id ? updatedEstimate : e) };
             }
             return p;
         });
-        _set('prorab_projects_all', updatedProjects);
+        localStorage.setItem('prorab_projects_all', JSON.stringify(updatedProjects));
     };
 
     if (loading) return <Loader fullScreen />;
