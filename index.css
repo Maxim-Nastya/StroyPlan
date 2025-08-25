@@ -616,6 +616,10 @@ tbody tr:hover {
 .auth-header {
     text-align: center;
     margin-bottom: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
 }
 .auth-header h1 {
     font-size: var(--text-2xl);
@@ -1160,6 +1164,35 @@ tbody tr:hover {
 .comment-form {
     display: flex;
     gap: var(--space-3);
+}
+
+/* 6.18 Logo */
+.app-logo .logo-bg {
+    fill: hsl(var(--primary));
+}
+.app-logo .logo-mark {
+    fill: hsl(var(--text-on-primary));
+}
+.header-logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    cursor: pointer;
+    text-decoration: none;
+}
+.header-logo .app-logo {
+    flex-shrink: 0;
+}
+.header-logo span {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: hsl(var(--primary-dark));
+}
+.footer-logo-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 600;
 }
 
 
