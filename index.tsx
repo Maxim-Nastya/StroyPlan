@@ -2575,7 +2575,7 @@ const ReportsView = ({ projects, onBack }: ReportsViewProps) => {
         const averageProfit = filteredProjects.length > 0 ? totalProfit / filteredProjects.length : 0;
 
         return { totalRevenue, totalExpenses, totalProfit, averageRevenue, averageProfit, projectBreakdown };
-    }, [filteredProjects]);
+    }, [filteredProjects, startDate, endDate]);
 
     const setDateRange = (range: 'this_month' | 'last_month' | 'this_year') => {
         const today = new Date();
