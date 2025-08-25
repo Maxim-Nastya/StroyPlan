@@ -49,16 +49,24 @@ const getUserKeyFromToken = (token) => {
 const get = (key, defaultValue) => JSON.parse(localStorage.getItem(key) || JSON.stringify(defaultValue));
 const set = (key, value) => localStorage.setItem(key, JSON.stringify(value));
 
+// Helper to respond with JSON
+const jsonResponse = (data, status = 200) => {
+    return new Response(JSON.stringify(data), {
+        status,
+        headers: { 'Content-Type': 'application/json' }
+    });
+};
+
 const handleApiFetch = async (event) => {
     const { request } = event;
-    const { pathname } = new URL(request.url);
+    const { pathname, searchParams } = new URL(request.url);
     
-    // --- AUTH ---
+    // --- PUBLIC ROUTES ---
     if (request.method === 'POST' && pathname === '/api/auth/register') {
         const { email, password } = await request.json();
         const users = get('prorab_users', []);
         if (users.some(u => u.email === email)) {
-            return new Response(JSON.stringify({ message: 'Пользователь с таким email уже существует.' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+            return jsonResponse({ message: 'Пользователь с таким email уже существует.' }, 409);
         }
         const newUser = { 
             email, 
@@ -67,7 +75,7 @@ const handleApiFetch = async (event) => {
         };
         set('prorab_users', [...users, newUser]);
         const token = `mock-token-${email}`;
-        return new Response(JSON.stringify({ user: newUser, token }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+        return jsonResponse({ user: newUser, token }, 201);
     }
 
     if (request.method === 'POST' && pathname === '/api/auth/login') {
@@ -76,9 +84,54 @@ const handleApiFetch = async (event) => {
         const user = users.find(u => u.email === email && u.password === password);
         if (user) {
             const token = `mock-token-${email}`;
-            return new Response(JSON.stringify({ user, token }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+            return jsonResponse({ user, token });
         }
-        return new Response(JSON.stringify({ message: 'Неверный email или пароль.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        return jsonResponse({ message: 'Неверный email или пароль.' }, 401);
+    }
+
+    if (request.method === 'GET' && pathname === '/api/public/estimate') {
+        const projectId = searchParams.get('projectId');
+        const estimateId = searchParams.get('estimateId');
+        if (!projectId || !estimateId) {
+             return jsonResponse({ message: 'Missing projectId or estimateId' }, 400);
+        }
+
+        const allProjects = Object.keys(localStorage)
+            .filter(k => k.startsWith('prorab_projects_'))
+            .flatMap(k => get(k, []));
+        
+        const project = allProjects.find(p => p.id === projectId);
+        if (!project) return jsonResponse({ message: 'Project not found' }, 404);
+
+        const estimate = project.estimates.find(e => e.id === estimateId);
+        if (!estimate) return jsonResponse({ message: 'Estimate not found' }, 404);
+
+        // Find the owner's profile to attach contractor info
+        const ownerEmail = Object.keys(localStorage)
+            .find(key => key.startsWith('prorab_projects_') && get(key, []).some(p => p.id === projectId))
+            ?.replace('prorab_projects_', '');
+
+        const profile = ownerEmail ? get(`prorab_profile_${ownerEmail}`, null) : null;
+        const projectWithContractor = { ...project, contractor: profile };
+
+        return jsonResponse({ project: projectWithContractor, estimate });
+    }
+     if (request.method === 'POST' && pathname === '/api/public/estimate/approve') {
+        const { projectId, estimateId } = await request.json();
+        
+        const ownerKey = Object.keys(localStorage).find(k => k.startsWith('prorab_projects_') && get(k, []).some(p => p.id === projectId));
+        if (!ownerKey) return jsonResponse({ message: "Project owner not found" }, 404);
+
+        const projects = get(ownerKey, []);
+        const updatedProjects = projects.map(p => {
+             if (p.id === projectId) {
+                const updatedEstimates = p.estimates.map(e => e.id === estimateId ? {...e, approvedOn: new Date().toISOString()} : e);
+                return {...p, estimates: updatedEstimates};
+            }
+            return p;
+        });
+        set(ownerKey, updatedProjects);
+        return jsonResponse({ success: true });
     }
 
     // --- PROTECTED ROUTES ---
@@ -86,41 +139,34 @@ const handleApiFetch = async (event) => {
     const userKey = getUserKeyFromToken(authHeader);
 
     if (!userKey) {
-        return new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+        return jsonResponse({ message: 'Unauthorized' }, 401);
     }
     
-    const users = get('prorab_users', []);
-    const currentUser = users.find(u => u.email === userKey);
+    // --- GET DATA (Granular) ---
+    const getData = (dataType) => {
+        const data = get(`prorab_${dataType}_${userKey}`, []);
+        return jsonResponse(data);
+    };
 
-    if (request.method === 'GET' && pathname === '/api/data') {
-        const data = {
-            user: currentUser,
-            projects: get(`prorab_projects_${userKey}`, []),
-            directory: get(`prorab_directory_${userKey}`, []),
-            profile: get(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' }),
-            templates: get(`prorab_templates_${userKey}`, []),
-            inventory: get(`prorab_inventory_${userKey}`, []),
-            inventoryNotes: get(`prorab_inventory_notes_${userKey}`, [])
-        };
-        // This logic is for the public view and needs to be maintained in the mock
-        const allProjects = Object.keys(localStorage).filter(k => k.startsWith('prorab_projects_') && k !== 'prorab_projects_all').flatMap(k => get(k, []));
-        set('prorab_projects_all', allProjects);
-        return new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } });
+    if (request.method === 'GET') {
+        if (pathname === '/api/user') {
+            const users = get('prorab_users', []);
+            const currentUser = users.find(u => u.email === userKey);
+            return jsonResponse(currentUser);
+        }
+        if (pathname === '/api/projects') return getData('projects');
+        if (pathname === '/api/directory') return getData('directory');
+        if (pathname === '/api/profile') return jsonResponse(get(`prorab_profile_${userKey}`, { companyName: '', contactName: userKey, phone: '', logo: '' }));
+        if (pathname === '/api/templates') return getData('templates');
+        if (pathname === '/api/inventory') return getData('inventory');
+        if (pathname === '/api/inventory-notes') return getData('inventory_notes');
     }
     
     // --- SAVE DATA ---
     const saveData = async (dataType) => {
         const data = await request.json();
         set(`prorab_${dataType}_${userKey}`, data);
-        // Special handling for projects to update the public 'all' key
-        if (dataType === 'projects') {
-            const otherKeys = Object.keys(localStorage).filter(k => k.startsWith('prorab_projects_') && k !== `prorab_projects_${userKey}` && k !== 'prorab_projects_all');
-            let combined = [...data];
-            otherKeys.forEach(key => combined.push(...get(key, [])));
-            const unique = Array.from(new Map(combined.map(p => [p.id, p])).values());
-            set('prorab_projects_all', unique);
-        }
-        return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+        return jsonResponse({ success: true });
     };
 
     if (request.method === 'POST') {
@@ -133,6 +179,7 @@ const handleApiFetch = async (event) => {
     }
 
     if (request.method === 'POST' && pathname === '/api/subscription/activate') {
+        const users = get('prorab_users', []);
         let updatedUser = null;
         const updatedUsers = users.map(u => {
             if (u.email === userKey) {
@@ -145,11 +192,11 @@ const handleApiFetch = async (event) => {
             return u;
         });
         set('prorab_users', updatedUsers);
-        return new Response(JSON.stringify(updatedUser), { headers: { 'Content-Type': 'application/json' } });
+        return jsonResponse(updatedUser);
     }
 
     // Fallback for any unhandled API routes
-    return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 });
+    return jsonResponse({ message: 'Not Found' }, 404);
 };
 
 

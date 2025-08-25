@@ -59,8 +59,8 @@ const App = () => {
         const loadInitialData = async () => {
             if (token) {
                 try {
-                    const data = await api.getData();
-                    setUser(data.user); // Update user with latest subscription data
+                    const data = await api.getInitialData();
+                    setUser(data.user);
                     setProjects(data.projects);
                     setDirectory(data.directory);
                     setProfile(data.profile);

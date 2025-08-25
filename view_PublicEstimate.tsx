@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { api } from './api';
 import type { Project, Estimate, EstimateItem, Comment } from './types';
 import { useToasts, Loader, Modal } from './components';
 import { generateId, formatCurrency } from './utils';
@@ -69,56 +70,38 @@ export const PublicEstimateView = () => {
             return;
         }
 
-        const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]');
-        const foundProject = allProjects.find((p: Project) => p.id === projectId);
-        const foundEstimate = foundProject?.estimates.find((e: Estimate) => e.id === estimateId);
-
-
-        if (foundProject && foundEstimate) {
-            setProject(foundProject);
-            setEstimate(foundEstimate);
-        } else {
-            setError('Смета не найдена. Возможно, она была удалена.');
-        }
-        setLoading(false);
+        const fetchData = async () => {
+            try {
+                const data = await api.getPublicEstimateData(projectId, estimateId);
+                setProject(data.project);
+                setEstimate(data.estimate);
+            } catch (err) {
+                 setError('Смета не найдена. Возможно, она была удалена.');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
     }, []);
 
-    const handleApprove = () => {
+    const handleApprove = async () => {
         if (!project || !estimate || estimate.approvedOn) return;
         if (window.confirm('Вы уверены, что хотите согласовать эту смету? Это действие нельзя будет отменить.')) {
-            const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]');
-            const updatedProjects = allProjects.map((p: Project) => {
-                if (p.id === project.id) {
-                    const updatedEstimates = p.estimates.map(e => e.id === estimate.id ? {...e, approvedOn: new Date().toISOString()} : e);
-                    return {...p, estimates: updatedEstimates};
-                }
-                return p;
-            });
-            localStorage.setItem('prorab_projects_all', JSON.stringify(updatedProjects));
-            
-            // This is a hack for demo purposes, in a real app this would be a single API call.
-            // We update the user-specific storage as well if we can guess the key.
-            const userKey = allProjects.find((p: any) => p.id === project.id)?.userKey; // Assuming userKey is part of the project
-             if (userKey) {
-                const userProjects = JSON.parse(localStorage.getItem(`prorab_projects_${userKey}`) || '[]');
-                const updatedUserProjects = userProjects.map((p: Project) => {
-                    if (p.id === project.id) {
-                        const updatedEstimates = p.estimates.map(e => e.id === estimate.id ? {...e, approvedOn: new Date().toISOString()} : e);
-                        return {...p, estimates: updatedEstimates};
-                    }
-                    return p;
-                });
-                localStorage.setItem(`prorab_projects_${userKey}`, JSON.stringify(updatedUserProjects));
+            try {
+                await api.approvePublicEstimate(project.id, estimate.id);
+                setEstimate(prev => prev ? {...prev, approvedOn: new Date().toISOString()} : null);
+                addToast('Смета успешно согласована!', 'success');
+            } catch (err) {
+                 addToast('Не удалось согласовать смету', 'error');
             }
-
-            setEstimate(prev => prev ? {...prev, approvedOn: new Date().toISOString()} : null);
-            addToast('Смета успешно согласована!', 'success');
         }
     };
 
     const handleAddComment = (itemId: string, commentText: string) => {
         if (!project || !estimate) return;
 
+        // Note: In a real app, this would be an API call to post a comment.
+        // For the mock, we just update local state. The change won't persist on reload.
         const newComment: Comment = {
             id: generateId(),
             author: 'Клиент',
@@ -133,16 +116,7 @@ export const PublicEstimateView = () => {
             )
         };
         setEstimate(updatedEstimate);
-        
-        // This is tricky without a backend. We'll update the public store.
-        const allProjects = JSON.parse(localStorage.getItem('prorab_projects_all') || '[]');
-        const updatedProjects = allProjects.map((p: Project) => {
-            if (p.id === project.id) {
-                return { ...p, estimates: p.estimates.map(e => e.id === estimate.id ? updatedEstimate : e) };
-            }
-            return p;
-        });
-        localStorage.setItem('prorab_projects_all', JSON.stringify(updatedProjects));
+        addToast("Комментарий добавлен (в демо-режиме)", "success");
     };
 
     if (loading) return <Loader fullScreen />;

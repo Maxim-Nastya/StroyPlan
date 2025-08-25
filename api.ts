@@ -1,4 +1,4 @@
-import type { User, Project, DirectoryItem, UserProfile, EstimateTemplate, InventoryItem, ProjectNote } from './types';
+import type { User, Project, DirectoryItem, UserProfile, EstimateTemplate, InventoryItem, ProjectNote, Estimate } from './types';
 
 const BASE_URL = ''; // In production, this would be your API domain (e.g., https://api.prorab.app)
 let token: string | null = null;
@@ -58,8 +58,28 @@ export const api = {
         });
     },
 
-    async getData(): Promise<{ user: User, projects: Project[], directory: DirectoryItem[], profile: UserProfile, templates: EstimateTemplate[], inventory: InventoryItem[], inventoryNotes: ProjectNote[] }> {
-        return _fetch('/api/data');
+    async getInitialData(): Promise<{ user: User, projects: Project[], directory: DirectoryItem[], profile: UserProfile, templates: EstimateTemplate[], inventory: InventoryItem[], inventoryNotes: ProjectNote[] }> {
+        const [user, projects, directory, profile, templates, inventory, inventoryNotes] = await Promise.all([
+            _fetch('/api/user'),
+            _fetch('/api/projects'),
+            _fetch('/api/directory'),
+            _fetch('/api/profile'),
+            _fetch('/api/templates'),
+            _fetch('/api/inventory'),
+            _fetch('/api/inventory-notes'),
+        ]);
+        return { user, projects, directory, profile, templates, inventory, inventoryNotes };
+    },
+    
+    async getPublicEstimateData(projectId: string, estimateId: string): Promise<{ project: Project, estimate: Estimate }> {
+        return _fetch(`/api/public/estimate?projectId=${projectId}&estimateId=${estimateId}`);
+    },
+
+    async approvePublicEstimate(projectId: string, estimateId: string): Promise<{ success: boolean }> {
+        return _fetch('/api/public/estimate/approve', {
+            method: 'POST',
+            body: JSON.stringify({ projectId, estimateId }),
+        });
     },
 
     async saveProjects(data: Project[]): Promise<void> {
