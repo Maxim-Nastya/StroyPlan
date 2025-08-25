@@ -4,8 +4,12 @@ import { User } from './types';
 import { Loader } from './components';
 import { LogoIcon, EmailIcon, LockIcon } from './icons';
 
+interface AuthScreenProps {
+    onLogin: (data: { user: User, token: string }) => void;
+}
+
 // --- AUTH SCREEN ---
-export const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
+export const AuthScreen = ({ onLogin }: AuthScreenProps) => {
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -17,8 +21,8 @@ export const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
         setLoading(true);
         setError('');
         try {
-            const user = isLogin ? await api.login(email, password) : await api.register(email, password);
-            onLogin(user);
+            const data = isLogin ? await api.login(email, password) : await api.register(email, password);
+            onLogin(data);
         } catch (err: any) {
             setError(err.message || 'Произошла ошибка');
         } finally {

@@ -69,7 +69,7 @@ const DirectoryEditModal = ({
 };
 
 
-export const DirectoryView = ({ directory, setDirectory, userKey }: { directory: DirectoryItem[], setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>, userKey: string }) => {
+export const DirectoryView = ({ directory, setDirectory }: { directory: DirectoryItem[], setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>> }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [editingItem, setEditingItem] = useState<DirectoryItem | null>(null);
     const { addToast } = useToasts();
@@ -89,7 +89,7 @@ export const DirectoryView = ({ directory, setDirectory, userKey }: { directory:
             try {
                 const updatedDirectory = directory.filter(item => item.id !== itemId);
                 setDirectory(updatedDirectory);
-                await api.saveDirectory(userKey, updatedDirectory);
+                await api.saveDirectory(updatedDirectory);
                 addToast('Позиция удалена из справочника', 'success');
             } catch (e) {
                 addToast('Не удалось удалить позицию', 'error');
@@ -109,7 +109,7 @@ export const DirectoryView = ({ directory, setDirectory, userKey }: { directory:
         try {
             const updatedDirectory = directory.map(item => item.id === editingItem.id ? { ...item, ...itemData, name: trimmedName } : item);
             setDirectory(updatedDirectory);
-            await api.saveDirectory(userKey, updatedDirectory);
+            await api.saveDirectory(updatedDirectory);
             addToast('Справочник обновлен', 'success');
             setEditingItem(null);
         } catch (e) {

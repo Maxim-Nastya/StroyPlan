@@ -157,7 +157,6 @@ export interface ProjectDetailsViewProps {
     projects: Project[];
     setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
     onBack: () => void;
-    userKey: string;
     directory: DirectoryItem[];
     setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
     templates: EstimateTemplate[];
@@ -172,7 +171,6 @@ export interface EstimateEditorProps {
     onDelete: (estimateId: string) => Promise<void>;
     directory: DirectoryItem[];
     setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>;
-    userKey: string;
     templates: EstimateTemplate[];
     onSaveTemplate: (template: EstimateTemplate) => Promise<void>;
     onDeleteTemplate: (templateId: string) => Promise<void>;

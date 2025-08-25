@@ -6,7 +6,7 @@ import { formatCurrency, generateId, fileToBase64 } from './utils';
 import type {
     Project, Estimate, EstimateItem, DirectoryItem, EstimateTemplate, Discount,
     Comment, FormEstimateItem, Expense, Payment, PhotoReport, ProjectScheduleItem,
-    ProjectDocument, ProjectNote, ProjectDetailsViewProps
+    ProjectDocument, ProjectNote, ProjectDetailsViewProps, EstimateEditorProps
 } from './types';
 import {
     EditIcon, DeleteIcon, CheckIcon, ReplayIcon, DocumentIcon, ImageIcon,
@@ -169,7 +169,7 @@ const TemplateModal = ({ show, onClose, templates, onApplyTemplate, onDeleteTemp
 }
 
 
-const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, setDirectory, userKey, onSaveTemplate, templates, onDeleteTemplate }: { estimate: Estimate, projectId: string, onUpdate: (updatedEstimate: Estimate) => Promise<void>, onDelete: (estimateId: string) => Promise<void>, directory: DirectoryItem[], setDirectory: React.Dispatch<React.SetStateAction<DirectoryItem[]>>, userKey: string, onSaveTemplate: (template: EstimateTemplate) => Promise<void>, templates: EstimateTemplate[], onDeleteTemplate: (templateId: string) => Promise<void> }) => {
+const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, setDirectory, onSaveTemplate, templates, onDeleteTemplate }: EstimateEditorProps) => {
     const [showModal, setShowModal] = useState(false);
     const [showShoppingListModal, setShowShoppingListModal] = useState(false);
     const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -278,7 +278,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                 };
                 const updatedDirectory = [...directory, newDirectoryItem];
                 setDirectory(updatedDirectory);
-                await api.saveDirectory(userKey, updatedDirectory);
+                await api.saveDirectory(updatedDirectory);
             }
             addToast(isEditing ? 'Позиция обновлена' : 'Позиция добавлена', 'success');
             closeModal();
@@ -603,7 +603,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
     );
 };
 
-const ExpenseTracker = ({ project, projects, setProjects, userKey }: { project: Project, projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>>, userKey: string }) => {
+const ExpenseTracker = ({ project, projects, setProjects }: { project: Project, projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>> }) => {
     const [showModal, setShowModal] = useState(false);
     const [entryType, setEntryType] = useState<'expense' | 'payment'>('expense');
     const [newEntry, setNewEntry] = useState({ date: new Date().toISOString().split('T')[0], description: '', amount: '' as string | number });
@@ -629,21 +629,20 @@ const ExpenseTracker = ({ project, projects, setProjects, userKey }: { project: 
         }
 
         try {
+            let updatedProjects;
             if (entryType === 'expense') {
                 let receiptDataUrl: string | undefined = undefined;
                 if (receiptFile) {
                     receiptDataUrl = await fileToBase64(receiptFile);
                 }
                 const expenseWithId: Expense = { ...newEntry, amount: finalAmount, id: generateId(), receipt: receiptDataUrl };
-                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, expenses: [...p.expenses, expenseWithId] } : p);
-                setProjects(updatedProjects);
-                await api.saveProjects(userKey, updatedProjects);
+                updatedProjects = projects.map(p => p.id === project.id ? { ...p, expenses: [...p.expenses, expenseWithId] } : p);
             } else {
                 const paymentWithId: Payment = { id: generateId(), date: newEntry.date, amount: finalAmount };
-                const updatedProjects = projects.map(p => p.id === project.id ? { ...p, payments: [...p.payments, paymentWithId] } : p);
-                setProjects(updatedProjects);
-                await api.saveProjects(userKey, updatedProjects);
+                updatedProjects = projects.map(p => p.id === project.id ? { ...p, payments: [...p.payments, paymentWithId] } : p);
             }
+            setProjects(updatedProjects);
+            await api.saveProjects(updatedProjects);
             addToast('Операция добавлена', 'success');
             setShowModal(false);
             setNewEntry({ date: new Date().toISOString().split('T')[0], description: '', amount: '' });
@@ -670,7 +669,7 @@ const ExpenseTracker = ({ project, projects, setProjects, userKey }: { project: 
                 return p;
             });
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
             addToast('Запись удалена', 'success');
         } catch (e) {
             addToast('Не удалось удалить', 'error');
@@ -765,7 +764,7 @@ const ExpenseTracker = ({ project, projects, setProjects, userKey }: { project: 
     );
 };
 
-const PhotoReports = ({ project, projects, setProjects, userKey }: { project: Project, projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>>, userKey: string }) => {
+const PhotoReports = ({ project, projects, setProjects }: { project: Project, projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>> }) => {
     const [showModal, setShowModal] = useState(false);
     const [newReport, setNewReport] = useState({ date: new Date().toISOString().split('T')[0], description: '' });
     const [reportFile, setReportFile] = useState<File | null>(null);
@@ -810,7 +809,7 @@ const PhotoReports = ({ project, projects, setProjects, userKey }: { project: Pr
             });
 
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
             addToast('Фотоотчет добавлен', 'success');
             setShowModal(false);
             setNewReport({ date: new Date().toISOString().split('T')[0], description: '' });
@@ -834,7 +833,7 @@ const PhotoReports = ({ project, projects, setProjects, userKey }: { project: Pr
                 return p;
             });
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
             addToast('Фотоотчет удален', 'success');
         } catch (err) {
             addToast('Не удалось удалить фотоотчет', 'error');
@@ -903,7 +902,7 @@ const PhotoReports = ({ project, projects, setProjects, userKey }: { project: Pr
     );
 };
 
-const ProjectSchedule = ({ project, projects, setProjects, userKey }: { project: Project, projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>>, userKey: string }) => {
+const ProjectSchedule = ({ project, projects, setProjects }: { project: Project, projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>> }) => {
     const [showModal, setShowModal] = useState(false);
     const [newItem, setNewItem] = useState({ name: '', startDate: '', endDate: '' });
     const [isSaving, setIsSaving] = useState(false);
@@ -929,7 +928,7 @@ const ProjectSchedule = ({ project, projects, setProjects, userKey }: { project:
             });
 
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
             addToast('Этап добавлен в график', 'success');
             setShowModal(false);
             setNewItem({ name: '', startDate: '', endDate: '' });
@@ -950,7 +949,7 @@ const ProjectSchedule = ({ project, projects, setProjects, userKey }: { project:
                 return p;
             });
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
             addToast('Этап удален', 'success');
         } catch (err) {
             addToast('Не удалось удалить этап', 'error');
@@ -969,7 +968,7 @@ const ProjectSchedule = ({ project, projects, setProjects, userKey }: { project:
                 return p;
             });
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
         } catch (err) {
             addToast('Не удалось обновить статус', 'error');
         }
@@ -1034,7 +1033,7 @@ const ProjectSchedule = ({ project, projects, setProjects, userKey }: { project:
 };
 
 
-const ProjectDocuments = ({ project, projects, setProjects, userKey }: { project: Project, projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>>, userKey: string }) => {
+const ProjectDocuments = ({ project, projects, setProjects }: { project: Project, projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>> }) => {
     const [showModal, setShowModal] = useState(false);
     const [newItem, setNewItem] = useState({ name: '' });
     const [documentFile, setDocumentFile] = useState<File | null>(null);
@@ -1074,7 +1073,7 @@ const ProjectDocuments = ({ project, projects, setProjects, userKey }: { project
                 return p;
             });
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
             addToast('Документ загружен', 'success');
             setShowModal(false);
             setNewItem({ name: '' });
@@ -1096,7 +1095,7 @@ const ProjectDocuments = ({ project, projects, setProjects, userKey }: { project
                 return p;
             });
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
             addToast('Документ удален', 'success');
         } catch (err) {
             addToast('Не удалось удалить документ', 'error');
@@ -1158,7 +1157,7 @@ const ProjectDocuments = ({ project, projects, setProjects, userKey }: { project
     );
 };
 
-const ProjectNotes = ({ project, projects, setProjects, userKey }: { project: Project, projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>>, userKey: string }) => {
+const ProjectNotes = ({ project, projects, setProjects }: { project: Project, projects: Project[], setProjects: React.Dispatch<React.SetStateAction<Project[]>> }) => {
     const [newNote, setNewNote] = useState('');
     const { addToast } = useToasts();
     
@@ -1181,7 +1180,7 @@ const ProjectNotes = ({ project, projects, setProjects, userKey }: { project: Pr
                 return p;
             });
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
             setNewNote('');
         } catch (err) {
             addToast('Не удалось добавить заметку', 'error');
@@ -1198,7 +1197,7 @@ const ProjectNotes = ({ project, projects, setProjects, userKey }: { project: Pr
                 return p;
             });
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
             addToast('Заметка удалена', 'success');
         } catch (err) {
             addToast('Не удалось удалить заметку', 'error');
@@ -1240,7 +1239,7 @@ const ProjectNotes = ({ project, projects, setProjects, userKey }: { project: Pr
 
 
 // --- MAIN VIEW COMPONENT ---
-export const ProjectDetailsView = ({ project, projects, setProjects, onBack, userKey, directory, setDirectory, templates, onSaveTemplate, onDeleteTemplate }: ProjectDetailsViewProps) => {
+export const ProjectDetailsView = ({ project, projects, setProjects, onBack, directory, setDirectory, templates, onSaveTemplate, onDeleteTemplate }: ProjectDetailsViewProps) => {
     const { addToast } = useToasts();
     const [showEditModal, setShowEditModal] = useState(false);
     const [showActModal, setShowActModal] = useState(false);
@@ -1251,7 +1250,7 @@ export const ProjectDetailsView = ({ project, projects, setProjects, onBack, use
         try {
             const updatedProjects = projects.map(p => p.id === updatedProject.id ? updatedProject : p);
             setProjects(updatedProjects);
-            await api.saveProjects(userKey, updatedProjects);
+            await api.saveProjects(updatedProjects);
         } catch (e) {
             addToast('Ошибка при сохранении проекта', 'error');
         }
@@ -1262,7 +1261,7 @@ export const ProjectDetailsView = ({ project, projects, setProjects, onBack, use
             try {
                 const updatedProjects = projects.filter(p => p.id !== project.id);
                 setProjects(updatedProjects);
-                await api.saveProjects(userKey, updatedProjects);
+                await api.saveProjects(updatedProjects);
                 addToast('Проект удален', 'success');
                 onBack();
             } catch (e) {
@@ -1378,7 +1377,6 @@ export const ProjectDetailsView = ({ project, projects, setProjects, onBack, use
                         onDelete={handleDeleteEstimate}
                         directory={directory}
                         setDirectory={setDirectory}
-                        userKey={userKey}
                         templates={templates}
                         onSaveTemplate={onSaveTemplate}
                         onDeleteTemplate={onDeleteTemplate}
@@ -1389,11 +1387,11 @@ export const ProjectDetailsView = ({ project, projects, setProjects, onBack, use
                  <button className="btn btn-secondary" onClick={handleAddEstimate}>+ Добавить смету</button>
              </div>
 
-            <ExpenseTracker project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
-            <PhotoReports project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
-            <ProjectSchedule project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
-            <ProjectDocuments project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
-            <ProjectNotes project={project} projects={projects} setProjects={setProjects} userKey={userKey} />
+            <ExpenseTracker project={project} projects={projects} setProjects={setProjects} />
+            <PhotoReports project={project} projects={projects} setProjects={setProjects} />
+            <ProjectSchedule project={project} projects={projects} setProjects={setProjects} />
+            <ProjectDocuments project={project} projects={projects} setProjects={setProjects} />
+            <ProjectNotes project={project} projects={projects} setProjects={setProjects} />
 
             {/* ProjectFormModal will be rendered from App to avoid prop drilling */}
             

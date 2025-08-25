@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 
 // Local module imports
-import { api } from './api';
+import { api, setToken } from './api';
 import { useLocalStorage } from './hooks';
 import { Loader, ToastProvider, useToasts, Header, BottomNav } from './components';
 import type {
@@ -35,9 +35,9 @@ if ('serviceWorker' in navigator) {
 // --- MAIN APP ---
 
 const App = () => {
-    const [user, setUser] = useLocalStorage<User | null>('prorab_user', null);
-    const userKey = useMemo(() => user?.email || 'guest', [user]);
-
+    const [user, setUser] = useState<User | null>(null);
+    const [token, setToken] = useLocalStorage<string | null>('prorab_token', null);
+    
     const [loading, setLoading] = useState(true);
     const [projects, setProjects] = useState<Project[]>([]);
     const [directory, setDirectory] = useState<DirectoryItem[]>([]);
@@ -52,10 +52,14 @@ const App = () => {
     const { addToast } = useToasts();
     
     useEffect(() => {
+        if (token) {
+            setToken(token);
+        }
+
         const loadInitialData = async () => {
-            if (userKey !== 'guest' && user) {
+            if (token) {
                 try {
-                    const data = await api.getData(userKey);
+                    const data = await api.getData();
                     setUser(data.user); // Update user with latest subscription data
                     setProjects(data.projects);
                     setDirectory(data.directory);
@@ -64,13 +68,30 @@ const App = () => {
                     setInventory(data.inventory);
                     setInventoryNotes(data.inventoryNotes);
                 } catch (error) {
-                    addToast('Не удалось загрузить данные', 'error');
+                    addToast('Не удалось загрузить данные. Возможно, сессия истекла.', 'error');
+                    handleLogout(); // Clear stale token
                 }
             }
             setLoading(false);
         };
         loadInitialData();
-    }, [userKey, addToast]);
+    }, [token, addToast]);
+    
+    const handleLogin = (data: { user: User; token: string }) => {
+        setUser(data.user);
+        setToken(data.token);
+    };
+
+    const handleLogout = () => {
+        setUser(null);
+        setToken(null);
+        // Clear all local data upon logout for security
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('prorab_')) {
+                localStorage.removeItem(key);
+            }
+        });
+    };
 
     const subscriptionStatus = useMemo(() => {
         if (!user) return 'inactive';
@@ -90,19 +111,19 @@ const App = () => {
             : [project, ...projects];
         
         setProjects(updatedProjects);
-        await api.saveProjects(userKey, updatedProjects);
+        await api.saveProjects(updatedProjects);
     };
 
     const handleSaveProfile = async (updatedProfile: UserProfile) => {
         setProfile(updatedProfile);
-        await api.saveProfile(userKey, updatedProfile);
+        await api.saveProfile(updatedProfile);
     };
     
     const handleSaveTemplate = async (template: EstimateTemplate) => {
         try {
             const updatedTemplates = [...templates, template];
             setTemplates(updatedTemplates);
-            await api.saveTemplates(userKey, updatedTemplates);
+            await api.saveTemplates(updatedTemplates);
             addToast('Шаблон сохранен!', 'success');
         } catch (e) {
             addToast('Не удалось сохранить шаблон', 'error');
@@ -114,7 +135,7 @@ const App = () => {
         try {
             const updatedTemplates = templates.filter(t => t.id !== templateId);
             setTemplates(updatedTemplates);
-            await api.saveTemplates(userKey, updatedTemplates);
+            await api.saveTemplates(updatedTemplates);
             addToast('Шаблон удален', 'success');
         } catch (e) {
             addToast('Не удалось удалить шаблон', 'error');
@@ -123,7 +144,7 @@ const App = () => {
 
     const handleActivateSubscription = async () => {
         try {
-            const updatedUser = await api.activateSubscription(userKey);
+            const updatedUser = await api.activateSubscription();
             setUser(updatedUser);
             addToast('Подписка успешно активирована!', 'success');
         } catch (e) {
@@ -135,12 +156,12 @@ const App = () => {
         return <Loader fullScreen />;
     }
 
-    if (!user) {
-        return <AuthScreen onLogin={setUser} />;
+    if (!user || !token) {
+        return <AuthScreen onLogin={handleLogin} />;
     }
 
     if (subscriptionStatus === 'expired') {
-        return <SubscriptionView user={user} onActivate={handleActivateSubscription} onLogout={() => setUser(null)} />;
+        return <SubscriptionView user={user} onActivate={handleActivateSubscription} onLogout={handleLogout} />;
     }
     
     if (currentView.view === 'project_details') {
@@ -157,7 +178,6 @@ const App = () => {
                     projects={projects}
                     setProjects={setProjects}
                     onBack={() => setCurrentView({ view: 'projects' })}
-                    userKey={userKey}
                     directory={directory}
                     setDirectory={setDirectory}
                     templates={templates}
@@ -175,11 +195,11 @@ const App = () => {
             case 'reports':
                 return <ReportsView projects={projects} />;
             case 'directory':
-                return <DirectoryView directory={directory} setDirectory={setDirectory} userKey={userKey} />;
+                return <DirectoryView directory={directory} setDirectory={setDirectory} />;
             case 'inventory':
-                return <InventoryView inventory={inventory} setInventory={setInventory} notes={inventoryNotes} setNotes={setInventoryNotes} projects={projects} userKey={userKey} />;
+                return <InventoryView inventory={inventory} setInventory={setInventory} notes={inventoryNotes} setNotes={setInventoryNotes} projects={projects} />;
             case 'settings':
-                return <SettingsView user={user} profile={profile} onSave={handleSaveProfile} onLogout={() => setUser(null)} />;
+                return <SettingsView user={user} profile={profile} onSave={handleSaveProfile} onLogout={handleLogout} />;
             default:
                 return null;
         }
@@ -188,7 +208,7 @@ const App = () => {
 
     return (
         <>
-            <Header user={user} onNavigate={setCurrentView} onLogout={() => setUser(null)} />
+            <Header user={user} onNavigate={setCurrentView} onLogout={handleLogout} />
             <main className="app-container">
                 {renderContent()}
             </main>

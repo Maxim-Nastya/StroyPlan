@@ -4,7 +4,7 @@ import { useToasts, Modal } from './components';
 import { DeleteIcon } from './icons';
 import type { InventoryItem, ProjectNote, Project } from './types';
 
-export const InventoryView = ({ inventory, setInventory, notes, setNotes, projects, userKey }: { inventory: InventoryItem[], setInventory: Dispatch<SetStateAction<InventoryItem[]>>, notes: ProjectNote[], setNotes: Dispatch<SetStateAction<ProjectNote[]>>, projects: Project[], userKey: string }) => {
+export const InventoryView = ({ inventory, setInventory, notes, setNotes, projects }: { inventory: InventoryItem[], setInventory: Dispatch<SetStateAction<InventoryItem[]>>, notes: ProjectNote[], setNotes: Dispatch<SetStateAction<ProjectNote[]>>, projects: Project[] }) => {
     const { addToast } = useToasts();
     const [showItemModal, setShowItemModal] = useState(false);
     const [newItemName, setNewItemName] = useState('');
@@ -20,7 +20,7 @@ export const InventoryView = ({ inventory, setInventory, notes, setNotes, projec
         };
         const updatedInventory = [...inventory, newItem];
         setInventory(updatedInventory);
-        await api.saveInventory(userKey, updatedInventory);
+        await api.saveInventory(updatedInventory);
         setNewItemName('');
         setShowItemModal(false);
     };
@@ -29,13 +29,13 @@ export const InventoryView = ({ inventory, setInventory, notes, setNotes, projec
         if (!window.confirm('Удалить инструмент?')) return;
         const updatedInventory = inventory.filter(i => i.id !== itemId);
         setInventory(updatedInventory);
-        await api.saveInventory(userKey, updatedInventory);
+        await api.saveInventory(updatedInventory);
     };
 
     const handleLocationChange = async (itemId: string, location: string) => {
         const updatedInventory = inventory.map(i => i.id === itemId ? {...i, location} : i);
         setInventory(updatedInventory);
-        await api.saveInventory(userKey, updatedInventory);
+        await api.saveInventory(updatedInventory);
     };
 
     const handleAddNote = async (e: React.FormEvent) => {
@@ -48,14 +48,14 @@ export const InventoryView = ({ inventory, setInventory, notes, setNotes, projec
         };
         const updatedNotes = [newNote, ...notes];
         setNotes(updatedNotes);
-        await api.saveInventoryNotes(userKey, updatedNotes);
+        await api.saveInventoryNotes(updatedNotes);
         setNewNoteText('');
     };
     
     const handleDeleteNote = async (noteId: string) => {
         const updatedNotes = notes.filter(n => n.id !== noteId);
         setNotes(updatedNotes);
-        await api.saveInventoryNotes(userKey, updatedNotes);
+        await api.saveInventoryNotes(updatedNotes);
     };
 
     const activeProjects = projects.filter(p => p.status === 'В работе');
