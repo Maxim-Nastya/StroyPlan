@@ -129,6 +129,7 @@ interface ProjectScheduleItem {
     name: string;
     startDate: string;
     endDate: string;
+    completed?: boolean;
 }
 
 interface ProjectDocument {
@@ -357,7 +358,23 @@ const api: {
 
     async saveData<T,>(userKey: string, dataType: 'projects' | 'directory' | 'profile' | 'templates' | 'inventory' | 'inventory_notes', data: T): Promise<void> {
         await _delay();
-        _set(`prorab_${dataType}_${userKey}`, data);
+        const key = `prorab_${dataType}_${userKey}`;
+        _set(key, data);
+    
+        // If projects are updated, we must also update the aggregated 'all_projects' key
+        // to ensure share links work immediately with the latest data.
+        if (dataType === 'projects') {
+            const otherProjectKeys = Object.keys(localStorage)
+                .filter(k => k.startsWith('prorab_projects_') && k !== key && k !== 'prorab_projects_all');
+            
+            let combinedProjects = [...(data as Project[])];
+            for (const otherKey of otherProjectKeys) {
+                combinedProjects = [...combinedProjects, ..._get<Project[]>(otherKey, [])];
+            }
+             // Deduplicate in case of any overlap
+            const uniqueProjects = Array.from(new Map(combinedProjects.map(p => [p.id, p])).values());
+            _set('prorab_projects_all', uniqueProjects);
+        }
     }
 };
 
@@ -563,17 +580,26 @@ interface EstimateEditorProps {
     userKey: string;
     onSaveTemplate: (template: EstimateTemplate) => Promise<void>;
 }
+
+type FormEstimateItem = {
+    name: string;
+    type: 'Работа' | 'Материал';
+    unit: string;
+    quantity: string | number;
+    price: string | number;
+}
+
 const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, setDirectory, userKey, onSaveTemplate }: EstimateEditorProps) => {
     const [showModal, setShowModal] = useState(false);
     const [showShoppingListModal, setShowShoppingListModal] = useState(false);
     const [editingItem, setEditingItem] = useState<EstimateItem | null>(null);
-    const [newItem, setNewItem] = useState<Omit<EstimateItem, 'id'>>({ name: '', type: 'Работа', unit: 'шт', quantity: 1, price: 0 });
+    const [newItem, setNewItem] = useState<FormEstimateItem>({ name: '', type: 'Работа', unit: 'шт', quantity: '1', price: '' });
     const [suggestions, setSuggestions] = useState<DirectoryItem[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const { addToast } = useToasts();
     
     const [discountType, setDiscountType] = useState<'percent' | 'fixed'>(estimate.discount?.type || 'percent');
-    const [discountValue, setDiscountValue] = useState<number>(estimate.discount?.value || 0);
+    const [discountValue, setDiscountValue] = useState<string | number>(estimate.discount?.value || '');
     const [estimateName, setEstimateName] = useState(estimate.name);
 
     const [showCommentModal, setShowCommentModal] = useState(false);
@@ -581,19 +607,21 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
 
     useEffect(() => {
         setDiscountType(estimate.discount?.type || 'percent');
-        setDiscountValue(estimate.discount?.value || 0);
+        setDiscountValue(estimate.discount?.value || '');
         setEstimateName(estimate.name);
     }, [estimate]);
 
     const isEditing = editingItem !== null;
 
+    const parsedDiscountValue = parseFloat(String(discountValue)) || 0;
+
     const subtotal = useMemo(() => estimate.items.reduce((sum, item) => sum + item.quantity * item.price, 0), [estimate.items]);
     const discountAmount = useMemo(() => {
         if (discountType === 'percent') {
-            return subtotal * (discountValue / 100);
+            return subtotal * (parsedDiscountValue / 100);
         }
-        return discountValue;
-    }, [subtotal, discountType, discountValue]);
+        return parsedDiscountValue;
+    }, [subtotal, discountType, parsedDiscountValue]);
     const total = subtotal - discountAmount;
 
     const shoppingList = useMemo(() => {
@@ -618,13 +646,13 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
 
     const openModalForNew = () => {
         setEditingItem(null);
-        setNewItem({ name: '', type: 'Работа', unit: 'шт', quantity: 1, price: 0 });
+        setNewItem({ name: '', type: 'Работа', unit: 'шт', quantity: '1', price: '' });
         setShowModal(true);
     };
 
     const openModalForEdit = (item: EstimateItem) => {
         setEditingItem(item);
-        setNewItem({ ...item });
+        setNewItem({ ...item, quantity: String(item.quantity), price: String(item.price) });
         setShowModal(true);
     };
 
@@ -639,19 +667,34 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
         const trimmedName = newItem.name.trim();
         if (!trimmedName) return;
         setIsSaving(true);
+
+        const finalItemData = {
+            name: trimmedName,
+            type: newItem.type,
+            unit: newItem.unit,
+            quantity: parseFloat(String(newItem.quantity)) || 1,
+            price: parseFloat(String(newItem.price)) || 0,
+        };
+
         try {
             let updatedItems;
             if (isEditing && editingItem) { // Update existing item
-                updatedItems = estimate.items.map(item => item.id === editingItem.id ? { ...item, ...newItem, name: trimmedName } : item);
+                updatedItems = estimate.items.map(item => item.id === editingItem.id ? { ...item, ...finalItemData } : item);
             } else { // Add new item
-                const itemWithId: EstimateItem = { ...newItem, name: trimmedName, id: generateId() };
+                const itemWithId: EstimateItem = { ...finalItemData, id: generateId() };
                 updatedItems = [...estimate.items, itemWithId];
             }
             await onUpdate({ ...estimate, items: updatedItems });
             
             const isInDirectory = directory.some(dirItem => dirItem.name.toLowerCase() === trimmedName.toLowerCase());
             if (!isInDirectory) {
-                const newDirectoryItem: DirectoryItem = { id: generateId(), name: trimmedName, type: newItem.type, unit: newItem.unit, price: newItem.price };
+                const newDirectoryItem: DirectoryItem = { 
+                    id: generateId(), 
+                    name: finalItemData.name, 
+                    type: finalItemData.type, 
+                    unit: finalItemData.unit, 
+                    price: finalItemData.price 
+                };
                 const updatedDirectory = [...directory, newDirectoryItem];
                 setDirectory(updatedDirectory);
                 await api.saveData(userKey, 'directory', updatedDirectory);
@@ -677,9 +720,9 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
         }
     };
 
-    const handleDiscountChange = async (type: 'percent' | 'fixed', value: number) => {
+    const handleDiscountChange = async (type: 'percent' | 'fixed', value: string | number) => {
         try {
-            const newDiscount: Discount = { type, value };
+            const newDiscount: Discount = { type, value: parseFloat(String(value)) || 0 };
             await onUpdate({ ...estimate, discount: newDiscount });
             addToast('Скидка применена', 'success');
         } catch (e) {
@@ -724,7 +767,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
             name: suggestion.name,
             type: suggestion.type,
             unit: suggestion.unit,
-            price: suggestion.price,
+            price: String(suggestion.price),
         });
         setSuggestions([]);
     };
@@ -850,7 +893,8 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                             type="number" 
                             className="discount-input"
                             value={discountValue} 
-                            onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
+                            placeholder="0"
+                            onChange={(e) => setDiscountValue(e.target.value)}
                             onBlur={() => handleDiscountChange(discountType, discountValue)}
                             step={discountType === 'percent' ? '0.1' : '100'}
                         />
@@ -864,7 +908,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                      </div>
                      {discountAmount > 0 && (
                          <div className="total-row discount-row">
-                             <span>Скидка ({discountType === 'percent' ? `${discountValue}%` : formatCurrency(discountValue)})</span>
+                             <span>Скидка ({discountType === 'percent' ? `${parsedDiscountValue}%` : formatCurrency(parsedDiscountValue)})</span>
                              <span>- {formatCurrency(discountAmount)}</span>
                          </div>
                      )}
@@ -903,7 +947,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                     <div className="d-flex gap-1">
                         <div className="form-group w-100">
                            <label>Количество</label>
-                           <input type="number" step="any" value={newItem.quantity} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewItem({...newItem, quantity: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
+                           <input type="number" step="any" value={newItem.quantity} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewItem({...newItem, quantity: e.target.value})} required disabled={isSaving}/>
                         </div>
                         <div className="form-group w-100">
                            <label>Ед. изм.</label>
@@ -912,7 +956,7 @@ const EstimateEditor = ({ estimate, projectId, onUpdate, onDelete, directory, se
                     </div>
                     <div className="form-group">
                         <label>Цена за единицу</label>
-                        <input type="number" step="0.01" value={newItem.price} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewItem({...newItem, price: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
+                        <input type="number" step="0.01" value={newItem.price} placeholder="0" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewItem({...newItem, price: e.target.value})} required disabled={isSaving}/>
                     </div>
                     <div className="form-actions">
                         <button type="button" className="btn btn-secondary" onClick={closeModal} disabled={isSaving}>Отмена</button>
@@ -968,7 +1012,7 @@ interface ExpenseTrackerProps {
 const ExpenseTracker = ({ project, projects, setProjects, userKey }: ExpenseTrackerProps) => {
     const [showModal, setShowModal] = useState(false);
     const [entryType, setEntryType] = useState<'expense' | 'payment'>('expense');
-    const [newEntry, setNewEntry] = useState({ date: new Date().toISOString().split('T')[0], description: '', amount: 0 });
+    const [newEntry, setNewEntry] = useState({ date: new Date().toISOString().split('T')[0], description: '', amount: '' as string | number });
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -983,25 +1027,32 @@ const ExpenseTracker = ({ project, projects, setProjects, userKey }: ExpenseTrac
     const handleAddEntry = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
+        const finalAmount = parseFloat(String(newEntry.amount)) || 0;
+        if (finalAmount <= 0) {
+            addToast('Сумма должна быть больше нуля', 'error');
+            setIsSaving(false);
+            return;
+        }
+
         try {
             if (entryType === 'expense') {
                 let receiptDataUrl: string | undefined = undefined;
                 if (receiptFile) {
                     receiptDataUrl = await fileToBase64(receiptFile);
                 }
-                const expenseWithId: Expense = { ...newEntry, id: generateId(), receipt: receiptDataUrl };
+                const expenseWithId: Expense = { ...newEntry, amount: finalAmount, id: generateId(), receipt: receiptDataUrl };
                 const updatedProjects = projects.map(p => p.id === project.id ? { ...p, expenses: [...p.expenses, expenseWithId] } : p);
                 setProjects(updatedProjects);
                 await api.saveData(userKey, 'projects', updatedProjects);
             } else {
-                const paymentWithId: Payment = { id: generateId(), date: newEntry.date, amount: newEntry.amount };
+                const paymentWithId: Payment = { id: generateId(), date: newEntry.date, amount: finalAmount };
                 const updatedProjects = projects.map(p => p.id === project.id ? { ...p, payments: [...p.payments, paymentWithId] } : p);
                 setProjects(updatedProjects);
                 await api.saveData(userKey, 'projects', updatedProjects);
             }
             addToast('Операция добавлена', 'success');
             setShowModal(false);
-            setNewEntry({ date: new Date().toISOString().split('T')[0], description: '', amount: 0 });
+            setNewEntry({ date: new Date().toISOString().split('T')[0], description: '', amount: '' });
             setReceiptFile(null);
         } catch (e) {
             addToast('Не удалось сохранить', 'error');
@@ -1086,7 +1137,7 @@ const ExpenseTracker = ({ project, projects, setProjects, userKey }: ExpenseTrac
                 <form onSubmit={handleAddEntry}>
                     <div className="form-group">
                         <label>Сумма</label>
-                        <input type="number" step="0.01" value={newEntry.amount} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEntry({...newEntry, amount: parseFloat(e.target.value) || 0})} required disabled={isSaving}/>
+                        <input type="number" step="0.01" value={newEntry.amount} placeholder="0" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEntry({...newEntry, amount: e.target.value})} required disabled={isSaving}/>
                     </div>
                      <div className="form-group">
                         <label>Дата</label>
@@ -1561,6 +1612,13 @@ const ProjectSchedule = ({ schedule, onUpdate }: ProjectScheduleProps) => {
         }
     };
 
+    const handleToggleComplete = (itemId: string) => {
+        const updatedSchedule = schedule.map(item => 
+            item.id === itemId ? { ...item, completed: !item.completed } : item
+        );
+        onUpdate(updatedSchedule);
+    };
+
     return (
         <div className="card">
             <div className="d-flex justify-between align-center mb-1">
@@ -1572,7 +1630,14 @@ const ProjectSchedule = ({ schedule, onUpdate }: ProjectScheduleProps) => {
             ) : (
                 <div className="data-list">
                     {schedule.map(item => (
-                        <div key={item.id} className="data-item">
+                        <div key={item.id} className={`data-item schedule-item ${item.completed ? 'completed' : ''}`}>
+                            <button 
+                                className="action-btn schedule-item-toggle" 
+                                onClick={() => handleToggleComplete(item.id)}
+                                aria-label={item.completed ? "Вернуть в работу" : "Отметить выполненным"}
+                            >
+                                {item.completed ? <ReplayIcon /> : <CheckIcon />}
+                            </button>
                             <div className="data-item-info">
                                 <strong>{item.name}</strong>
                                 <span className="data-item-subtext">
@@ -2060,7 +2125,7 @@ const ProjectList = ({ projects, onSelectProject, onNewProject }: ProjectListPro
                     p.client.name.toLowerCase().includes(lowercasedQuery)
                 );
             })
-            .sort((a, b) => a.name.localeCompare(b.name));
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [projects, statusFilter, searchQuery]);
 
     return (
@@ -2585,7 +2650,7 @@ const ReportsView = ({ projects, onBack }: ReportsViewProps) => {
         const averageProfit = filteredProjects.length > 0 ? totalProfit / filteredProjects.length : 0;
 
         return { totalRevenue, totalExpenses, totalProfit, averageRevenue, averageProfit, projectBreakdown };
-    }, [filteredProjects, startDate, endDate]);
+    }, [filteredProjects]);
 
     const setDateRange = (range: 'this_month' | 'last_month' | 'this_year') => {
         const today = new Date();
@@ -2855,6 +2920,10 @@ const DirectoryView = ({ directory, setDirectory, userKey, onBack }: DirectoryVi
         }
     };
 
+    const sortedDirectory = useMemo(() => {
+        return [...directory].sort((a, b) => a.name.localeCompare(b.name));
+    }, [directory]);
+
     return (
         <div className="animate-fade-slide-up">
              <button onClick={onBack} className="back-button">
@@ -2876,12 +2945,10 @@ const DirectoryView = ({ directory, setDirectory, userKey, onBack }: DirectoryVi
                             </tr>
                         </thead>
                         <tbody>
-                            {directory.length === 0 ? (
+                            {sortedDirectory.length === 0 ? (
                                 <tr><td colSpan={4} style={{textAlign: 'center', padding: '1rem'}}>Справочник пуст.</td></tr>
                             ) : (
-                                [...directory]
-                                    .sort((a,b) => a.name.localeCompare(b.name))
-                                    .map(item => (
+                                sortedDirectory.map(item => (
                                     <tr key={item.id}>
                                         <td>
                                             <strong>{item.name}</strong>

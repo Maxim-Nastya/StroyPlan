@@ -346,11 +346,11 @@ main {
     background-color: hsla(var(--primary-hue), 20%, 10%, 0.5);
     display: flex;
     justify-content: center;
-    align-items: flex-start; /* Align modals to the top */
+    align-items: center; /* Center vertically */
     z-index: 2000;
     animation: fade-slide-up 0.3s forwards;
-    overflow-y: auto; /* Allow scrolling the entire overlay */
-    padding: var(--space-8) var(--space-4); /* Add generous vertical padding */
+    overflow-y: auto;
+    padding: var(--space-4);
 }
 
 .modal-content {
@@ -362,7 +362,7 @@ main {
     box-shadow: var(--shadow-md);
     border: 1px solid var(--border-color);
     animation: fade-slide-up 0.4s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
-    margin-bottom: auto; /* Prevent stretching on some flex implementations */
+    margin: auto; /* Ensure centering in all cases */
 }
 
 .modal-header {
@@ -408,6 +408,10 @@ input:disabled, select:disabled, textarea:disabled {
     cursor: not-allowed;
     opacity: 0.7;
 }
+input[type="number"]::placeholder {
+    color: hsl(var(--text-secondary), 0.7);
+}
+
 
 .form-actions {
     display: flex;
@@ -526,6 +530,7 @@ tbody tr:hover {
     color: hsl(var(--text-secondary));
     border-radius: var(--border-radius-full);
     transition: var(--transition-fast);
+    white-space: nowrap;
 }
 .modal-toggle button.active, .filter-toggle button.active {
     background-color: hsl(var(--surface));
@@ -1102,6 +1107,30 @@ tbody tr:hover {
 .data-item-info a:hover {
     text-decoration: underline;
 }
+
+.schedule-item {
+    padding-left: 0;
+    padding-right: var(--space-3);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--space-3);
+}
+.schedule-item.completed .data-item-info strong {
+    text-decoration: line-through;
+    color: hsl(var(--text-secondary));
+}
+
+.schedule-item-toggle {
+    padding: 0 var(--space-2);
+}
+.schedule-item-toggle .action-btn {
+    color: hsl(var(--success));
+}
+.schedule-item.completed .schedule-item-toggle .action-btn {
+    color: hsl(var(--text-secondary));
+}
+
 
 /* 6.17 NEW: Comments */
 .comment-btn {
